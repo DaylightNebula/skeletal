@@ -8,12 +8,15 @@ use magician_vgpu::glam::{Mat4, Quat, Vec3};
 
 use crate::{data::{Animation, Interpolation, ModelBone, PreProcessAnimation}, mesh::SkeletalMesh};
 
+/// A basic animator that allows for low level control of the current animation
+/// state of a `SkeletalMesh` or anything else that uses this `Animator`.
 #[derive(Getters, Component)]
 pub struct Animator {
     animations: AHashMap<String, Animation>,
     state: Option<AnimatorState>
 }
 
+/// The general animation state of the `Animator`.
 pub struct AnimatorState {
     animation: String,
     start_time: DateTime<Utc>,
@@ -21,13 +24,21 @@ pub struct AnimatorState {
 }
 
 impl Animator {
-    pub fn from_raw(animations: AHashMap<String, Animation>) -> Self {
+    /// Create a new `Animator` from the raw animation and state data.
+    pub fn from_raw(
+        animations: AHashMap<String, Animation>,
+        state: Option<AnimatorState>
+    ) -> Self {
         Self {
             animations,
-            state: None
+            state
         }
     }
 
+    /// Create a new `Animator` for a `SkeletalMesh` and a map of `PreProcessAnimation`.
+    /// This allows animations from any source to be applied to any `SkeletalMesh`.  The
+    /// mesh provided should at a minimum be using the same skeleton as the object this
+    /// `Animator` will be applied too.
     pub fn new(
         mesh: &SkeletalMesh,
         animations: &AHashMap<String, PreProcessAnimation>
@@ -42,14 +53,72 @@ impl Animator {
         }
     }
 
-    pub fn play(&mut self, animation: impl Into<String>, looping: bool) {
+    /// Add an animation to this `Animator`.
+    pub fn add_animation(
+        &mut self,
+        id: impl Into<String>,
+        animation: Animation
+    ) {
+        self.animations.insert(id.into(), animation);
+    }
+
+    /// Add a `PreProcessAnimation` to this `Animator`.  The given mesh should 
+    /// at a minimum be using a similar skeleton to the mesh that this `Animator` 
+    /// will be applied too.
+    pub fn add_preprocessed_animation(
+        &mut self,
+        mesh: &SkeletalMesh,
+        id: impl Into<String>,
+        animation: PreProcessAnimation
+    ) {
+        self.animations.insert(id.into(), Animation::from_preprocessed_animation(&animation, mesh.node_id_map(), true));
+    }
+
+    /// Add an iterator of `Animation`s to this `Animator`.
+    pub fn add_animations(
+        &mut self,
+        iter: impl Iterator<Item = (String, Animation)>
+    ) {
+        self.animations.extend(iter);
+    }
+
+    /// Add an iterator of `PreProcessAnimation`s to this `Animator`.  The 
+    /// given mesh should at a minimum be using a similar skeleton to the 
+    /// mesh that this `Animator` will be applied too.
+    pub fn add_preprocessed_animations(
+        &mut self,
+        mesh: &SkeletalMesh,
+        iter: impl Iterator<Item = (String, PreProcessAnimation)>
+    ) {
+        self.animations.extend(
+            iter.map(|(id, pre_process)| {
+                (
+                    id,
+                    Animation::from_preprocessed_animation(&pre_process, mesh.node_id_map(), true)
+                )
+            })
+        );
+    }
+
+    /// Play a specific animation associated with the given ID.  If no animation
+    /// with the given ID exists, no animation will play.  The `looping` flag
+    /// determines if the animation should loop or should stop when the animation 
+    /// is over.
+    pub fn play(&mut self, anim_id: impl Into<String>, looping: bool) {
         self.state = Some(AnimatorState { 
-            animation: animation.into(), 
+            animation: anim_id.into(), 
             start_time: Utc::now(), 
             is_looping: looping 
         })
     }
 
+    /// Stop any active animations in this `Animator`.
+    pub fn stop(&mut self) {
+        self.state = None;
+    }
+
+    /// Internal function for calculation the transform matrices of each `ModelBone`
+    /// in a `SkeletalMesh` during rendering.
     pub(crate) fn animate(&mut self, bone: &ModelBone) -> Option<Vec<Mat4>> {
         // get animation, animation state, and run time
         let Some(state) = self.state.as_ref() else { return None };
