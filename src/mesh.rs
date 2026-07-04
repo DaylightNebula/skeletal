@@ -1,26 +1,24 @@
 use ahash::AHashMap;
-use anarchy::{ComponentMeta, extract_comps_distributed};
-use chrono::{DateTime, Utc};
+use anarchy::{ComponentMeta, extract_comps_distributed, macros::Getters};
 use gearbox::{Mesh, Transform};
 use magician_vgpu::{BindGroupProvider, BindableObject, Buffer, DrawSettings, ImmutableBuffer, MutableBuffer, Pipeline, PipelineBuilder, ShaderSource, ShaderType, SinglePass, VirtualGpu, WritableBuffer, glam::*};
-use mutual::{CastableSharedData, CowData, RefCastGuard};
+use mutual::{CastableSharedData, CowData, MutCastGuard, RefCastGuard};
 use skeletal_shaders::{AnimationInfo, AnimationInfoInput};
 use wgpu::ShaderStages;
 
-use crate::{anim::animate_matrices, data::*};
+use crate::{anim::Animator, data::*};
 
 pub type SkeletalMeshVertex = skeletal_shaders::VertexInput;
 
+#[derive(Getters)]
 pub struct SkeletalMesh {
-    pub bones: Vec<ModelBone>,
-    pub animations: AHashMap<String, Animation>,
-    pub skin: Option<Vec<(u16, Mat4)>>,
-    pub meshes: AHashMap<usize, SkeletalSubMesh>,
-    pub material: Option<SkeletalMaterial>,
-    pub node_id_map: AHashMap<String, usize>,
-    pub instance_buffer: CowData<MutableBuffer<[Mat4]>>,
-    pub animation_buffers: CowData<SkeletalAnimationBuffers>,
-    pub anim_start_time: DateTime<Utc>
+    pub(crate) bones: Vec<ModelBone>,
+    pub(crate) skin: Option<Vec<(u16, Mat4)>>,
+    pub(crate) meshes: AHashMap<usize, SkeletalSubMesh>,
+    pub(crate) material: Option<SkeletalMaterial>,
+    pub(crate) node_id_map: AHashMap<String, usize>,
+    pub(crate) instance_buffer: CowData<MutableBuffer<[Mat4]>>,
+    pub(crate) animation_buffers: CowData<SkeletalAnimationBuffers>
 }
 
 pub struct SkeletalSubMesh {
@@ -49,7 +47,8 @@ impl Mesh for SkeletalMesh {
             )
             .vertex(vertex_buffer_layout())
             .vertex(instance_buffer_layout())
-            .layout_raw::<skeletal_shaders::AnimationInfoInput>(skeletal_shaders::AnimationInfoInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
+            .layout_raw::<gearbox::shaders::common::CameraInput>(1, gearbox::shaders::common::CameraInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
+            .layout_raw::<skeletal_shaders::AnimationInfoInput>(2, skeletal_shaders::AnimationInfoInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
     }
 
     fn draw<'a>(
@@ -61,11 +60,13 @@ impl Mesh for SkeletalMesh {
         // extract transform and mesh components
         let (mut comps, _ctx) = extract_comps_distributed(
             entity, 
-            &[Transform::bit_mask()], 
+            &[Transform::bit_mask(), Animator::bit_mask()], 
             None
         );
         let transform: RefCastGuard<_, Transform> = comps.next().flatten()
-            .expect("BasicMaterial requires Transform companion component").lock_cast_ref();
+            .expect("SkeletalMesh requires Transform companion component").lock_cast_ref();
+        let mut animator: MutCastGuard<_, Animator> = comps.next().flatten()
+            .expect("SkeletalMesh requires Animator companion component").lock_cast_mut();
 
         // create instance matrix to draw
         let instances = [
@@ -93,17 +94,13 @@ impl Mesh for SkeletalMesh {
 
         // render each bone
         for bone in &self.bones {
-            let animation = self.animations.get("Walking_A").expect("failed to find test animation");
-            let seconds_since_start = Utc::now().signed_duration_since(self.anim_start_time).as_seconds_f32();
-            let time = seconds_since_start % animation.length;
-
-            // animate nodes
-            let mut nodes = Vec::new();
-            animate_matrices(&mut nodes, bone, animation, &Mat4::IDENTITY, time);
+            // get node transforms from the animator
+            let node_transforms = animator.animate(bone);
 
             // generate bones
-            // let mut bones = nodes.iter().map(|a| (*a).into()).collect::<Vec<magician_vgpu::rust::Mat4>>();
-            let bones = if let Some(skin) = self.skin.as_ref() {
+            let bones = if self.skin.is_some() && node_transforms.is_some() {
+                let nodes = node_transforms.unwrap();
+                let skin = self.skin.as_ref().unwrap();
                 let mut bones = skin.iter()
                     .map(|(idx, ibp)| nodes[*idx as usize] * ibp)
                     .map(|a| a.into())

@@ -2,7 +2,6 @@ use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
 use ahash::AHashMap;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use chrono::Utc;
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 use gltf::Gltf;
 use mutual::CowData;
@@ -18,7 +17,7 @@ pub fn load<'a>(
     asset_file: &PathBuf,
     source_file: &PathBuf,
     extra_buffer: Option<Cow<'_, [u8]>>
-) -> SkeletalMesh {
+) -> (SkeletalMesh, AHashMap<String, PreProcessAnimation>) {
     let mut node_id_map: AHashMap<String, usize> = AHashMap::new();
     let mut nodes: Vec<ModelBone> = Vec::new();
     let mut meshes = AHashMap::new();
@@ -65,7 +64,6 @@ pub fn load<'a>(
         .animations()
         .into_iter()
         .map(|animation| unpack_animation(&buffers, &animation))
-        .map(|(id, pre_process)| (id, Animation::from_preprocessed_animation(&pre_process, &node_id_map, true)))
         .collect::<AHashMap<_, _>>();
     println!("Gltf animation count {}", gltf.animations().len());
     println!("Loaded {} animations!", animations.len());
@@ -86,13 +84,15 @@ pub fn load<'a>(
         joints.zip(ibp).collect::<Vec<_>>()
     });
 
-    SkeletalMesh { 
-        bones: nodes, node_id_map, animations, 
-        skin, meshes, material,
-        instance_buffer: CowData::null(),
-        animation_buffers: CowData::null(),
-        anim_start_time: Utc::now()
-    }
+    (
+        SkeletalMesh { 
+            bones: nodes, node_id_map, 
+            skin, meshes, material,
+            instance_buffer: CowData::null(),
+            animation_buffers: CowData::null()
+        },
+        animations
+    )
 }
 
 fn unpack_animation<'a>(

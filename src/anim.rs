@@ -1,9 +1,78 @@
 use std::f32::consts::PI;
 
+use ahash::AHashMap;
+use anarchy::macros::{Component, Getters};
+use chrono::{DateTime, Utc};
 use gearbox::Transform;
 use magician_vgpu::glam::{Mat4, Quat, Vec3};
 
-use crate::data::{Animation, Interpolation, ModelBone};
+use crate::{data::{Animation, Interpolation, ModelBone, PreProcessAnimation}, mesh::SkeletalMesh};
+
+#[derive(Getters, Component)]
+pub struct Animator {
+    animations: AHashMap<String, Animation>,
+    state: Option<AnimatorState>
+}
+
+pub struct AnimatorState {
+    animation: String,
+    start_time: DateTime<Utc>,
+    is_looping: bool
+}
+
+impl Animator {
+    pub fn from_raw(animations: AHashMap<String, Animation>) -> Self {
+        Self {
+            animations,
+            state: None
+        }
+    }
+
+    pub fn new(
+        mesh: &SkeletalMesh,
+        animations: &AHashMap<String, PreProcessAnimation>
+    ) -> Self {
+        let animations = animations.into_iter()
+            .map(|(id, pre_process)| (id.clone(), Animation::from_preprocessed_animation(&pre_process, mesh.node_id_map(), true)))
+            .collect::<AHashMap<_, _>>();
+
+        Self {
+            animations,
+            state: None
+        }
+    }
+
+    pub fn play(&mut self, animation: impl Into<String>, looping: bool) {
+        self.state = Some(AnimatorState { 
+            animation: animation.into(), 
+            start_time: Utc::now(), 
+            is_looping: looping 
+        })
+    }
+
+    pub(crate) fn animate(&mut self, bone: &ModelBone) -> Option<Vec<Mat4>> {
+        // get animation, animation state, and run time
+        let Some(state) = self.state.as_ref() else { return None };
+        let Some(animation) = self.animations.get(&state.animation) else { return None };
+        let anim_time = Utc::now().signed_duration_since(state.start_time).as_seconds_f32();
+
+        // is not looping and the animation is over, cancel it
+        if !state.is_looping && anim_time > animation.length {
+            self.state = None;
+            return None;
+        }
+
+        // animate bone matrices
+        let mut nodes = Vec::new();
+        animate_matrices(
+            &mut nodes, 
+            bone, animation, 
+            &Mat4::IDENTITY, 
+            anim_time % animation.length
+        );
+        return Some(nodes);
+    }
+}
 
 /// For each node in the node tree, its global matrix is added to the node_matrices list
 pub fn animate_matrices(

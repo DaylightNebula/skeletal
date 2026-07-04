@@ -8,6 +8,7 @@ use cell::{App, Graphics};
 use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, RenderPlugin, SimpleTexturedMaterial, Transform};
 use gltf::Gltf;
 use magician_vgpu::glam::*;
+use skeletal::anim::Animator;
 use skeletal::loader;
 
 fn main() -> anyhow::Result<()> {
@@ -33,9 +34,9 @@ fn startup_triangle(
     println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
     let file = File::open(&path)?;
     let gltf = Gltf::from_reader(BufReader::new(file))?;
-    let model = loader::load(gltf, &*graphics, &path, &path, None);
+    let (model, animations) = loader::load(gltf, &*graphics, &path, &path, None);
 
-    let material = model.material.as_ref()
+    let material = model.material().as_ref()
         .map(|std_mat| std_mat.albedo_texture.as_ref())
         .flatten()
         .map(|albedo_bytes| SimpleTexturedMaterial::from_png(&*graphics, &albedo_bytes).ok())
@@ -43,10 +44,14 @@ fn startup_triangle(
         .map(|textured_mat| MaterialRef::new(textured_mat))
         .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
 
+    let mut animator = Animator::new(&model, &animations);
+    animator.play("2H_Melee_Attack_Spin", true);
+
     world.insert(
         EntityBuilder::default()
             .add(Transform::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE * 3.0))
             .add(material)
+            .add(animator)
             .add(MeshRef::new(model))
             .build()
     );
