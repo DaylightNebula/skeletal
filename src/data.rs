@@ -2,12 +2,12 @@ use ahash::AHashMap;
 use magician_vgpu::glam::*;
 
 #[derive(Default, Debug, Clone)]
-pub struct StandardMaterial {
-    pub albedo_texture_path: Option<Vec<u8>>,
-    pub roughness_texture_path: Option<Vec<u8>>,
-    pub emissive_texture_path: Option<Vec<u8>>,
-    pub normal_texture_path: Option<Vec<u8>>,
-    pub occlusion_texture_path: Option<Vec<u8>>,
+pub struct SkeletalMaterial {
+    pub albedo_texture: Option<Vec<u8>>,
+    pub roughness_texture: Option<Vec<u8>>,
+    pub emissive_texture: Option<Vec<u8>>,
+    pub normal_texture: Option<Vec<u8>>,
+    pub occlusion_texture: Option<Vec<u8>>,
     pub albedo_color: [f32; 4],
     pub emissive_color: [f32; 3],
     pub metallic_factor: f32,

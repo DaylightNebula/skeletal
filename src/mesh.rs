@@ -16,7 +16,7 @@ pub struct SkeletalMesh {
     pub animations: AHashMap<String, Animation>,
     pub skin: Option<Vec<(u16, Mat4)>>,
     pub meshes: AHashMap<usize, SkeletalSubMesh>,
-    pub material: Option<StandardMaterial>,
+    pub material: Option<SkeletalMaterial>,
     pub node_id_map: AHashMap<String, usize>,
     pub instance_buffer: CowData<MutableBuffer<[Mat4]>>,
     pub animation_buffers: CowData<SkeletalAnimationBuffers>,

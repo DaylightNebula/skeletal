@@ -309,14 +309,14 @@ fn unpack_mesh<'mesh>(
     (m_idx, mesh)
 }
 
-fn unpack_material(textures: AHashMap<usize, Vec<u8>>, material: &gltf::Material) -> StandardMaterial {
+fn unpack_material(textures: AHashMap<usize, Vec<u8>>, material: &gltf::Material) -> SkeletalMaterial {
     let pbr = material.pbr_metallic_roughness();
-    StandardMaterial {
-        albedo_texture_path: pbr.base_color_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
-        roughness_texture_path: pbr.metallic_roughness_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
-        emissive_texture_path: material.emissive_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
-        normal_texture_path: material.normal_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
-        occlusion_texture_path: material.occlusion_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
+    SkeletalMaterial {
+        albedo_texture: pbr.base_color_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
+        roughness_texture: pbr.metallic_roughness_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
+        emissive_texture: material.emissive_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
+        normal_texture: material.normal_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
+        occlusion_texture: material.occlusion_texture().map(|texture| textures.get(&texture.as_ref().index()).cloned().unwrap()),
         albedo_color: pbr.base_color_factor().into(),
         emissive_color: material.emissive_factor().into(),
         metallic_factor: pbr.metallic_factor().into(),

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, RenderPlugin, Transform};
+use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, RenderPlugin, SimpleTexturedMaterial, Transform};
 use gltf::Gltf;
 use magician_vgpu::glam::*;
 use skeletal::loader;
@@ -35,10 +35,18 @@ fn startup_triangle(
     let gltf = Gltf::from_reader(BufReader::new(file))?;
     let model = loader::load(gltf, &*graphics, &path, &path, None);
 
+    let material = model.material.as_ref()
+        .map(|std_mat| std_mat.albedo_texture.as_ref())
+        .flatten()
+        .map(|albedo_bytes| SimpleTexturedMaterial::from_png(&*graphics, &albedo_bytes).ok())
+        .flatten()
+        .map(|textured_mat| MaterialRef::new(textured_mat))
+        .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
+
     world.insert(
         EntityBuilder::default()
             .add(Transform::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE * 3.0))
-            .add(MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.2, 0.4, 1.0))))
+            .add(material)
             .add(MeshRef::new(model))
             .build()
     );
