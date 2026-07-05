@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, RenderPlugin, SimpleTexturedMaterial, Transform};
+use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, GearboxRenderPlugin, SimpleTexturedMaterial, Transform};
 use gltf::Gltf;
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
@@ -13,7 +13,7 @@ use skeletal::loader;
 
 fn main() -> anyhow::Result<()> {
     App::new()
-        .add_plugin(RenderPlugin)
+        .add_plugin(GearboxRenderPlugin)
         .on_render_startup(startup_triangle)
         .on_render_update(update_triangle)
         .run()
