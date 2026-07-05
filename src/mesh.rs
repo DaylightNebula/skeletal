@@ -51,11 +51,11 @@ impl Mesh for SkeletalMesh {
             .layout_raw::<skeletal_shaders::AnimationInfoInput>(2, skeletal_shaders::AnimationInfoInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
     }
 
-    fn draw<'a>(
-        &'a self,
+    fn draw(
+        &self,
         vgpu: &VirtualGpu,
-        pass: &mut SinglePass<'a>, 
-        entity: &'a anarchy::Entity
+        pass: &mut SinglePass, 
+        entity: &anarchy::Entity
     ) {
         // extract transform and mesh components
         let (mut comps, _ctx) = extract_comps_distributed(
