@@ -126,7 +126,7 @@ impl Mesh for SkeletalMesh {
                     .expect("Failed to update animation buffers");
             }
 
-            pass.bind_raw::<skeletal_shaders::AnimationInfoInput>(2, &self.animation_buffers.get_ref().bindable.bind_group());
+            pass.bind_raw(2, &self.animation_buffers.get_ref().bindable.bind_group());
 
 
             recr_bone(
