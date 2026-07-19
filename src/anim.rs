@@ -151,8 +151,11 @@ pub fn animate_matrices(
     parent: &Mat4,
     time: f32
 ) {
-    // calculate animated matrix
-    let animated_matrix = &animation.channels
+    // calculate animated matrix, falling back to the node's authored rest pose
+    // (not identity) when it has no animation channel of its own - this keeps
+    // unanimated attachment nodes (props parented to a bone) at their correct
+    // offset instead of snapping to their parent bone's origin.
+    let local_matrix = animation.channels
         .get(&(node.id as usize)).map(|channel| {
             let translation = channel.positions
                 .as_ref()
@@ -167,11 +170,11 @@ pub fn animate_matrices(
                 .map(|(a, b, c)| compute_vector_interpolation(a, &b, &c, time))
                 .unwrap_or(Vec3::ONE);
 
-            Transform::new(translation, rotation, scale)
-        }).unwrap_or(Transform::default());
-    
+            Transform::new(translation, rotation, scale).as_matix()
+        }).unwrap_or(node.transform);
+
     // calculate final matrix
-    let matrix = parent * animated_matrix.as_matix();
+    let matrix = parent * local_matrix;
 
     // animate children
     for node in &node.children {

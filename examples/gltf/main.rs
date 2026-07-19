@@ -62,7 +62,7 @@ fn update_triangle(
     transforms: Query<(&mut Transform, &MeshRef)>
 ) {
     transforms.as_iter().for_each(|(mut transform, _)| {
-        let rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.005 / 3.0, 0.0) * transform.rotation();
-        transform.set_rotation(rotation);
+        // let rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.005 / 3.0, 0.0) * transform.rotation();
+        // transform.set_rotation(rotation);
     });
 }

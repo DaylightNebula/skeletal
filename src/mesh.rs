@@ -97,10 +97,8 @@ impl Mesh for SkeletalMesh {
             // get node transforms from the animator
             let node_transforms = animator.animate(bone);
 
-            // generate bones
-            let bones = if self.skin.is_some() && node_transforms.is_some() {
-                let nodes = node_transforms.unwrap();
-                let skin = self.skin.as_ref().unwrap();
+            // generate skin matrices (world * inverse bind), used by actual skinned vertices
+            let bones = if let (Some(skin), Some(nodes)) = (self.skin.as_ref(), node_transforms.as_ref()) {
                 let mut bones = skin.iter()
                     .map(|(idx, ibp)| nodes[*idx as usize] * ibp)
                     .map(|a| a.into())
@@ -110,7 +108,23 @@ impl Mesh for SkeletalMesh {
             } else {
                 vec![Mat4::IDENTITY.into(); 32]
             };
-            let info = AnimationInfo { bones: bones.as_slice().try_into().unwrap() };
+
+            // generate plain per-node world matrices, used by rigid (non-skinned)
+            // attachments (hats, weapons, shields, etc) parented to a bone
+            let node_mats = if let Some(nodes) = node_transforms.as_ref() {
+                let mut node_mats = nodes.iter()
+                    .map(|m| (*m).into())
+                    .collect::<Vec<magician_vgpu::rust::Mat4>>();
+                node_mats.resize(32, Mat4::IDENTITY.into());
+                node_mats
+            } else {
+                vec![Mat4::IDENTITY.into(); 32]
+            };
+
+            let info = AnimationInfo {
+                bones: bones.as_slice().try_into().unwrap(),
+                nodes: node_mats.as_slice().try_into().unwrap()
+            };
 
             if self.animation_buffers.is_null() {
                 let buffer = MutableBuffer::new(

@@ -52,7 +52,8 @@ pub struct AnimationInfoInput {
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy, UniformBufferObject)]
 pub struct AnimationInfo {
-    pub bones: [Mat4; 32]
+    pub bones: [Mat4; 32],
+    pub nodes: [Mat4; 32]
 }
 
 #[shader("./shader_out", vertex)]
@@ -81,7 +82,7 @@ pub fn skeletal_vertex_main(
             (model.weights.w() * anim_info.info.bones[model.joints.w() as usize]);
         mm = mm * bone_mat;
     } else {
-        mm = mm * anim_info.info.bones[model.joints.x() as usize];
+        mm = mm * anim_info.info.nodes[model.joints.x() as usize];
     }
 
     let world_position = mm * Vec4::from_vec3_w(model.position, 1.0);
