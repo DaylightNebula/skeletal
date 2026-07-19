@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use anarchy::{EntityBuilder, Query, Res, WorldDatabase};
+use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
 use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, GearboxRenderPlugin, SimpleTexturedMaterial, Transform};
@@ -62,7 +62,7 @@ fn update_triangle(
     transforms: Query<(&mut Transform, &MeshRef)>
 ) {
     transforms.as_iter().for_each(|(mut transform, _)| {
-        // let rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.005 / 3.0, 0.0) * transform.rotation();
-        // transform.set_rotation(rotation);
+        let rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.005 / 3.0, 0.0) * transform.rotation();
+        transform.set_rotation(rotation);
     });
 }

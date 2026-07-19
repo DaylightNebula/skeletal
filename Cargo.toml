@@ -19,4 +19,7 @@ gltf = "1.4.1"
 base64 = "0.22.1"
 ahash = "0.8.12"
 wgpu = "29.0"
-anyhow = "1.0.103"
+
+[dev-dependencies]
+iso_ui = { path = "../iso_ui" }
+rfd = "0.17.2"
