@@ -1,29 +1,99 @@
+use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
 
-use anarchy::macros::system;
+use anarchy::macros::{Resource, system};
 use anarchy::anyhow::{self, bail};
-use anarchy::{Res, ResourceMeta};
-use cell::EguiPlugin;
+use anarchy::{EntityBuilder, Query, Res, ResMut, WorldDatabase};
+use cell::{EguiPlugin, Graphics};
 use cell::{App, EguiCtx, egui::egui};
-use gearbox::GearboxRenderPlugin;
+use gearbox::{BasicMaterial, MaterialRef, MeshRef, SimpleTexturedMaterial, glam::*};
+use gearbox::{Camera, GearboxRenderPlugin, Transform};
+use gltf::Gltf;
+use skeletal::anim::Animator;
+use skeletal::loader;
+
+#[derive(Debug, Resource)]
+pub struct ViewerData {
+    pub loop_animations: bool
+}
 
 fn main() -> anyhow::Result<()> {
     App::new()
         .add_plugin(GearboxRenderPlugin)
-        // .add_plugin(EguiPlugin)
+        .add_plugin(EguiPlugin)
+        .on_render_startup(setup)
         .on_render_update(update)
+        .add_resource(ViewerData { loop_animations: true })
         .run()
 }
 
 #[system]
-fn update(
-    egui: Res<EguiCtx>
+fn setup(
+    graphics: Res<Graphics>
 ) {
-    // let Some(path) = get_path() else { bail!("No path provided") };
+    world.insert(
+        EntityBuilder::default()
+            .add(Transform::new(Vec3::new(0.0, 10.0, 30.0), Quat::from_rotation_x(-0.5), Vec3::ONE))
+            .add(Camera::default())
+            .build()
+    );
+    
+    let Some(path) = get_path() else { bail!("No path provided") };
+    let file = File::open(&path)?;
+    let gltf = Gltf::from_reader(BufReader::new(file))?;
+    let (model, animations) = loader::load(gltf, &*graphics, &path, &path, None);
 
-    egui::Window::new("Model").show(&egui.context, |ui| {
-        ui.label(format!("Path"));
-    });
+    let material = model.material().as_ref()
+        .map(|std_mat| std_mat.albedo_texture.as_ref())
+        .flatten()
+        .map(|albedo_bytes| SimpleTexturedMaterial::from_png(&*graphics, &albedo_bytes).ok())
+        .flatten()
+        .map(|textured_mat| MaterialRef::new(textured_mat))
+        .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
+
+    let mut animator = Animator::new(&model, &animations);
+    animator.play("2H_Melee_Attack_Spin", true);
+
+    world.insert(
+        EntityBuilder::default()
+            .add(Transform::new(Vec3::new(0.0, -1.0, 0.0), Quat::IDENTITY, Vec3::ONE * 3.0))
+            .add(material)
+            .add(animator)
+            .add(MeshRef::new(model))
+            .build()
+    );
+}
+
+#[system]
+fn update(
+    egui: Res<EguiCtx>,
+    query: Query<&mut Animator>,
+    data: ResMut<ViewerData>
+) {
+    for mut animator in query.as_iter() {
+        egui::Window::new("Animations").show(&egui.context, |ui| {
+            let animations = animator.animations()
+                .iter()
+                .map(|a| a.0.clone())
+                .collect::<Vec<_>>();
+
+            ui.horizontal(|ui| {
+                ui.label("Looping");
+                ui.checkbox(&mut data.loop_animations, "");
+            });
+
+            egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    for anim in animations.into_iter() {
+                        if ui.button(&anim).clicked() {
+                            animator.play(anim, data.loop_animations);
+                        }
+                    }
+                });
+        });
+    }
 }
 
 fn get_path() -> Option<PathBuf> {
