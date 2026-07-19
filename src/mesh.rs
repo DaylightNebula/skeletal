@@ -1,5 +1,5 @@
 use ahash::AHashMap;
-use anarchy::{ComponentMeta, extract_comps_distributed, macros::Getters};
+use anarchy::{ComponentMeta, extract_comps_distributed, macros::{AsAny, Getters, GettersMut}};
 use gearbox::{Mesh, Transform};
 use magician_vgpu::{BindGroupProvider, BindableObject, Buffer, DrawSettings, ImmutableBuffer, MutableBuffer, Pipeline, PipelineBuilder, ShaderSource, ShaderType, SinglePass, VirtualGpu, WritableBuffer, glam::*};
 use mutual::{CastableSharedData, CowData, MutCastGuard, RefCastGuard};
@@ -10,7 +10,7 @@ use crate::{anim::Animator, data::*};
 
 pub type SkeletalMeshVertex = skeletal_shaders::VertexInput;
 
-#[derive(Getters)]
+#[derive(Getters, GettersMut, AsAny)]
 pub struct SkeletalMesh {
     pub(crate) bones: Vec<ModelBone>,
     pub(crate) skin: Option<Vec<(u16, Mat4)>>,
@@ -23,7 +23,9 @@ pub struct SkeletalMesh {
 
 pub struct SkeletalSubMesh {
     pub vertices: ImmutableBuffer<[SkeletalMeshVertex]>,
-    pub indices: ImmutableBuffer<[u32]>
+    pub indices: ImmutableBuffer<[u32]>,
+    pub label: String,
+    pub visible: bool
 }
 
 pub struct SkeletalAnimationBuffers {
@@ -162,12 +164,14 @@ fn recr_bone(
     // attempt to find bone mesh to draw
     let bone_mesh = bone.mesh.map(|a| mesh.meshes.get(&a)).flatten();
     if let Some(bone_mesh) = bone_mesh {
-        // draw bone specific mesh
-        pass.draw(
-            &bone_mesh.vertices,
-            &bone_mesh.indices,
-            DrawSettings::default()
-        )
+        if bone_mesh.visible {
+            // draw bone specific mesh
+            pass.draw(
+                &bone_mesh.vertices,
+                &bone_mesh.indices,
+                DrawSettings::default()
+            )
+        }
     }
     
     // draw children bones

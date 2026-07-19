@@ -200,7 +200,7 @@ fn unpack_node<'a>(
 
     // load mesh if necessary
     if let Some(mesh) = node.mesh() {
-        let (idx, asset) = unpack_mesh(vgpu, buffers, &mesh, node.index());
+        let (idx, asset) = unpack_mesh(vgpu, buffers, &mesh, node.name().map(|a| a.to_string()), node.index());
         meshes.insert(idx, asset);
     }
 
@@ -231,6 +231,7 @@ fn unpack_mesh<'mesh>(
     vgpu: &VirtualGpu,
     buffers: &Vec<Vec<u8>>,
     mesh: &gltf::Mesh<'mesh>,
+    label: Option<String>,
     parent_id: usize
 ) -> (usize, SkeletalSubMesh) {
     let mut final_vertices = Vec::new();
@@ -303,7 +304,9 @@ fn unpack_mesh<'mesh>(
     let m_idx = mesh.index();
     let mesh = SkeletalSubMesh {
         vertices: ImmutableBuffer::new(vgpu, &final_vertices, wgpu::BufferUsages::VERTEX),
-        indices: ImmutableBuffer::new(vgpu, &final_indices, wgpu::BufferUsages::INDEX)
+        indices: ImmutableBuffer::new(vgpu, &final_indices, wgpu::BufferUsages::INDEX),
+        label: label.unwrap_or_else(|| format!("#unnamed_{}", mesh.index())),
+        visible: true
     };
 
     (m_idx, mesh)

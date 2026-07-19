@@ -12,6 +12,7 @@ use gearbox::{Camera, GearboxRenderPlugin, Transform};
 use gltf::Gltf;
 use skeletal::anim::Animator;
 use skeletal::loader;
+use skeletal::mesh::SkeletalMesh;
 
 #[derive(Debug, Resource)]
 pub struct ViewerData {
@@ -67,12 +68,27 @@ fn setup(
 
 #[system]
 fn update(
+    graphics: Res<Graphics>,
     egui: Res<EguiCtx>,
-    query: Query<&mut Animator>,
+    query: Query<(&mut Animator, &mut MeshRef)>,
     data: ResMut<ViewerData>
 ) {
-    for mut animator in query.as_iter() {
-        egui::Window::new("Animations").show(&egui.context, |ui| {
+    egui::Window::new("Animations").show(&egui.context, |ui| {
+        if ui.button("Add animations...").clicked() {
+            let Some(path) = rfd::FileDialog::new()
+                .set_title("Select a GLTF/GLB file")
+                .pick_file() else { return };
+            let file = File::open(&path).unwrap();
+            let gltf = Gltf::from_reader(BufReader::new(file)).unwrap();
+            let (_model, animations) = loader::load(gltf, &*graphics, &path, &path, None);
+        
+            for (mut animator, mut mesh) in query.as_iter() {
+                let Some(mesh) = mesh.0.as_any_mut().downcast_mut::<SkeletalMesh>() else { continue };
+                animator.add_preprocessed_animations(mesh, animations.clone().into_iter());
+            }
+        }
+
+        for (mut animator, _) in query.as_iter() {
             let animations = animator.animations()
                 .iter()
                 .map(|a| a.0.clone())
@@ -92,8 +108,17 @@ fn update(
                         }
                     }
                 });
-        });
-    }
+        }
+    });
+
+    egui::Window::new("Mesh").show(&egui.context, |ui| {
+        for (_, mut mesh) in query.as_iter() {
+            let Some(mesh) = mesh.0.as_any_mut().downcast_mut::<SkeletalMesh>() else { continue };
+            for (_submesh_id, submesh) in mesh.meshes_mut().iter_mut() {
+                ui.checkbox(&mut submesh.visible, submesh.label.clone());
+            }
+        }
+    });
 }
 
 fn get_path() -> Option<PathBuf> {
@@ -102,7 +127,7 @@ fn get_path() -> Option<PathBuf> {
         Some(PathBuf::from(arg))
     } else {
         rfd::FileDialog::new()
-            .set_title("Select a file")
+            .set_title("Select a GLTF/GLB file")
             .pick_file()
     }
 }
