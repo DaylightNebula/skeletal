@@ -4,4 +4,5 @@ shader_out/
 
 *.lock
 *.glb
+*.fbx
 *.png

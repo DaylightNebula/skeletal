@@ -1,15 +1,12 @@
-use std::fs::File;
-use std::io::BufReader;
 use std::path::PathBuf;
 
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
 use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, GearboxRenderPlugin, SimpleTexturedMaterial, Transform};
-use gltf::Gltf;
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
-use skeletal::loader;
+use skeletal::fbx_loader;
 
 fn main() -> anyhow::Result<()> {
     App::new()
@@ -30,26 +27,29 @@ fn startup_triangle(
             .build()
     );
 
-    let path: PathBuf = "./examples/gltf/Characters.glb".into();
+    let path: PathBuf = "./examples/fbx/SK_Character_Alien_Male_01.fbx".into();
     println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
-    let file = File::open(&path)?;
-    let gltf = Gltf::from_reader(BufReader::new(file))?;
-    let (model, animations) = loader::load(gltf, &*graphics, &path, &path, None);
+    let scene = ufbx::load_file(path.to_str().expect("Non UTF-8 fbx path"), fbx_loader::load_opts())
+        .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))?;
+
+    // this fbx's diffuse texture reference is stale (baked from the artist's machine and
+    // under a different filename), so point it at the texture we actually have on disk.
+    let (model, animations) = fbx_loader::load(&scene, &*graphics, &path, None);
 
     let material = model.material().as_ref()
         .map(|std_mat| std_mat.albedo_texture.as_ref())
         .flatten()
-        .map(|albedo_bytes| SimpleTexturedMaterial::from_png(&*graphics, &albedo_bytes).ok())
+        .map(|albedo_bytes| SimpleTexturedMaterial::from_png(&*graphics, albedo_bytes).ok())
         .flatten()
         .map(|textured_mat| MaterialRef::new(textured_mat))
         .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
 
-    let mut animator = Animator::new(&model, &animations);
-    animator.play("2H_Melee_Attack_Spin", true);
+    let animator = Animator::new(&model, &animations);
+    // animator.play("2H_Melee_Attack_Spin", true);
 
     world.insert(
         EntityBuilder::default()
-            .add(Transform::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE * 3.0))
+            .add(Transform::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE * 0.025))
             .add(material)
             .add(animator)
             .add(MeshRef::new(model))
