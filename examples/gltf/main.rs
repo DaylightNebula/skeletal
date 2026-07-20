@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, GearboxRenderPlugin, SimpleTexturedMaterial, Transform};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, SimpleTexturedMaterial, Transform};
 use gltf::Gltf;
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
@@ -21,7 +21,8 @@ fn main() -> anyhow::Result<()> {
 
 #[system]
 fn startup_triangle(
-    graphics: Res<Graphics>
+    graphics: Res<Graphics>,
+    textures: Res<BindlessArrayTextureVault>
 ) {
     world.insert(
         EntityBuilder::default()
@@ -37,10 +38,9 @@ fn startup_triangle(
     let (model, animations) = loader::gltf::load(gltf, &*graphics, &path, &path, None);
 
     let material = model.material().as_ref()
-        .map(|std_mat| std_mat.albedo_texture.as_ref())
-        .flatten()
-        .map(|albedo_bytes| SimpleTexturedMaterial::from_png(&*graphics, &albedo_bytes).ok())
-        .flatten()
+        .and_then(|std_mat| std_mat.albedo_texture.as_ref())
+        .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
+        .map(|handle| SimpleTexturedMaterial::new(handle))
         .map(|textured_mat| MaterialRef::new(textured_mat))
         .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
 

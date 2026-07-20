@@ -7,7 +7,7 @@ use anarchy::anyhow::{self, bail};
 use anarchy::{EntityBuilder, Query, Res, ResMut, WorldDatabase};
 use cell::{EguiPlugin, Graphics};
 use cell::{App, EguiCtx, egui::egui};
-use gearbox::{BasicMaterial, MaterialRef, MeshRef, SimpleTexturedMaterial, glam::*};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, MaterialRef, MeshRef, SimpleTexturedMaterial, glam::*};
 use gearbox::{Camera, GearboxRenderPlugin, Transform};
 use gltf::Gltf;
 use skeletal::anim::Animator;
@@ -31,7 +31,8 @@ fn main() -> anyhow::Result<()> {
 
 #[system]
 fn setup(
-    graphics: Res<Graphics>
+    graphics: Res<Graphics>,
+    textures: Res<BindlessArrayTextureVault>
 ) {
     world.insert(
         EntityBuilder::default()
@@ -46,10 +47,9 @@ fn setup(
     let (model, animations) = loader::gltf::load(gltf, &*graphics, &path, &path, None);
 
     let material = model.material().as_ref()
-        .map(|std_mat| std_mat.albedo_texture.as_ref())
-        .flatten()
-        .map(|albedo_bytes| SimpleTexturedMaterial::from_png(&*graphics, &albedo_bytes).ok())
-        .flatten()
+        .and_then(|std_mat| std_mat.albedo_texture.as_ref())
+        .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
+        .map(|handle| SimpleTexturedMaterial::new(handle))
         .map(|textured_mat| MaterialRef::new(textured_mat))
         .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
 
