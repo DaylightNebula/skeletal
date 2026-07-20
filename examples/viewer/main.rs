@@ -43,7 +43,7 @@ fn setup(
     let Some(path) = get_path() else { bail!("No path provided") };
     let file = File::open(&path)?;
     let gltf = Gltf::from_reader(BufReader::new(file))?;
-    let (model, animations) = loader::load(gltf, &*graphics, &path, &path, None);
+    let (model, animations) = loader::gltf::load(gltf, &*graphics, &path, &path, None);
 
     let material = model.material().as_ref()
         .map(|std_mat| std_mat.albedo_texture.as_ref())
@@ -80,7 +80,7 @@ fn update(
                 .pick_file() else { return };
             let file = File::open(&path).unwrap();
             let gltf = Gltf::from_reader(BufReader::new(file)).unwrap();
-            let (_model, animations) = loader::load(gltf, &*graphics, &path, &path, None);
+            let (_model, animations) = loader::gltf::load(gltf, &*graphics, &path, &path, None);
         
             for (mut animator, mut mesh) in query.as_iter() {
                 let Some(mesh) = mesh.0.as_any_mut().downcast_mut::<SkeletalMesh>() else { continue };

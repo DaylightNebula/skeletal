@@ -34,7 +34,7 @@ fn startup_triangle(
     println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
     let file = File::open(&path)?;
     let gltf = Gltf::from_reader(BufReader::new(file))?;
-    let (model, animations) = loader::load(gltf, &*graphics, &path, &path, None);
+    let (model, animations) = loader::gltf::load(gltf, &*graphics, &path, &path, None);
 
     let material = model.material().as_ref()
         .map(|std_mat| std_mat.albedo_texture.as_ref())

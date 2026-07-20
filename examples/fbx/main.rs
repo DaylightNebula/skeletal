@@ -6,7 +6,7 @@ use cell::{App, Graphics};
 use gearbox::{BasicMaterial, Camera, MaterialRef, MeshRef, GearboxRenderPlugin, SimpleTexturedMaterial, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
-use skeletal::fbx_loader;
+use skeletal::loader;
 
 fn main() -> anyhow::Result<()> {
     App::new()
@@ -29,12 +29,12 @@ fn startup_triangle(
 
     let path: PathBuf = "./examples/fbx/SK_Character_Alien_Male_01.fbx".into();
     println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
-    let scene = ufbx::load_file(path.to_str().expect("Non UTF-8 fbx path"), fbx_loader::load_opts())
+    let scene = ufbx::load_file(path.to_str().expect("Non UTF-8 fbx path"), loader::fbx::load_opts())
         .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))?;
 
     // this fbx's diffuse texture reference is stale (baked from the artist's machine and
     // under a different filename), so point it at the texture we actually have on disk.
-    let (model, animations) = fbx_loader::load(&scene, &*graphics, &path, None);
+    let (model, animations) = loader::fbx::load(&scene, &*graphics, &path, None);
 
     let material = model.material().as_ref()
         .map(|std_mat| std_mat.albedo_texture.as_ref())
