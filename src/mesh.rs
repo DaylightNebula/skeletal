@@ -49,8 +49,8 @@ impl Mesh for SkeletalMesh {
             )
             .vertex(vertex_buffer_layout())
             .vertex(instance_buffer_layout())
-            .layout_raw::<gearbox::shaders::common::CameraInput>(1, gearbox::shaders::common::CameraInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
-            .layout_raw::<skeletal_shaders::AnimationInfoInput>(2, skeletal_shaders::AnimationInfoInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
+            .layout_raw::<gearbox::shaders::common::CameraInput>(2, gearbox::shaders::common::CameraInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
+            .layout_raw::<skeletal_shaders::AnimationInfoInput>(3, skeletal_shaders::AnimationInfoInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
     }
 
     fn draw(
@@ -142,7 +142,7 @@ impl Mesh for SkeletalMesh {
                     .expect("Failed to update animation buffers");
             }
 
-            pass.bind_raw(2, &self.animation_buffers.get_ref().bindable.bind_group());
+            pass.bind_raw(3, &self.animation_buffers.get_ref().bindable.bind_group());
 
 
             recr_bone(

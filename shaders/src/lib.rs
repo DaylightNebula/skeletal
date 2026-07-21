@@ -58,8 +58,8 @@ pub struct AnimationInfo {
 
 #[shader("./shader_out", vertex)]
 pub fn skeletal_vertex_main(
-    #[group = 2] anim_info: AnimationInfoInput,
-    #[group = 1] cam_in: CameraInput,
+    #[group = 3] anim_info: AnimationInfoInput,
+    #[group = 2] cam_in: CameraInput,
     model: VertexInput,
     instance: InstanceInput
 ) -> VertexOutput {
