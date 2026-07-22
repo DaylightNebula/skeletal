@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use gearbox::Transform;
 use magician_vgpu::glam::{Mat4, Quat, Vec3};
 
-use crate::{data::{Animation, Interpolation, ModelBone, PreProcessAnimation}, mesh::SkeletalMesh};
+use crate::{data::{Animation, Interpolation, ModelBone, PreProcessAnimation}, model::SkeletalMesh};
 
 /// A basic animator that allows for low level control of the current animation
 /// state of a `SkeletalMesh` or anything else that uses this `Animator`.

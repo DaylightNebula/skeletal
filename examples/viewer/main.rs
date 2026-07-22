@@ -7,12 +7,11 @@ use anarchy::anyhow::{self, bail};
 use anarchy::{EntityBuilder, Query, Res, ResMut, WorldDatabase};
 use cell::{EguiPlugin, Graphics};
 use cell::{App, EguiCtx, egui::egui};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, MaterialRef, MeshRef, SimpleTexturedMaterial, glam::*};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, MaterialRef, MeshAssetVault, MeshRef, SimpleTexturedMaterial, glam::*};
 use gearbox::{Camera, GearboxRenderPlugin, Transform};
 use gltf::Gltf;
 use skeletal::anim::Animator;
-use skeletal::loader;
-use skeletal::mesh::SkeletalMesh;
+use skeletal::{SkeletalMesh, loader};
 
 #[derive(Debug, Resource)]
 pub struct ViewerData {
@@ -32,6 +31,7 @@ fn main() -> anyhow::Result<()> {
 #[system]
 fn setup(
     graphics: Res<Graphics>,
+    meshes: Res<MeshAssetVault>,
     textures: Res<BindlessArrayTextureVault>
 ) {
     world.insert(
@@ -44,7 +44,7 @@ fn setup(
     let Some(path) = get_path() else { bail!("No path provided") };
     let file = File::open(&path)?;
     let gltf = Gltf::from_reader(BufReader::new(file))?;
-    let (model, animations) = loader::gltf::load(gltf, &*graphics, &path, &path, None);
+    let (model, animations) = loader::gltf::load(gltf, &*graphics, &meshes, &path, &path, None);
 
     let material = model.material().as_ref()
         .and_then(|std_mat| std_mat.albedo_texture.as_ref())
@@ -70,6 +70,7 @@ fn setup(
 fn update(
     graphics: Res<Graphics>,
     egui: Res<EguiCtx>,
+    meshes: Res<MeshAssetVault>,
     query: Query<(&mut Animator, &mut MeshRef)>,
     data: ResMut<ViewerData>
 ) {
@@ -80,7 +81,7 @@ fn update(
                 .pick_file() else { return };
             let file = File::open(&path).unwrap();
             let gltf = Gltf::from_reader(BufReader::new(file)).unwrap();
-            let (_model, animations) = loader::gltf::load(gltf, &*graphics, &path, &path, None);
+            let (_model, animations) = loader::gltf::load(gltf, &*graphics, &meshes, &path, &path, None);
         
             for (mut animator, mut mesh) in query.as_iter() {
                 let Some(mesh) = mesh.0.as_any_mut().downcast_mut::<SkeletalMesh>() else { continue };

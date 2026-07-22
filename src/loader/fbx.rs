@@ -1,11 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::{hash::{Hash, Hasher}, path::{Path, PathBuf}};
 
-use ahash::AHashMap;
+use ahash::{AHashMap, AHasher};
 use anarchy::macros::warn;
+use gearbox::{MeshAsset, MeshAssetVault};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 use mutual::CowData;
 
-use crate::{data::*, mesh::*};
+use crate::{SkeletalMesh, SkeletalMeshVertex, SkeletalRenderableMesh, SkeletalSubMesh, data::*};
 
 /// Called with the texture's referenced name (its `relative_filename`, or whatever
 /// non-empty name ufbx gave it) before any built-in path resolution is tried. Return
@@ -16,20 +17,25 @@ pub type TextureResolver<'a> = dyn Fn(&str) -> Option<PathBuf> + 'a;
 /// Load an already-parsed ufbx `Scene` into a `SkeletalMesh` plus its animations.
 /// Mirrors `loader::load` for gltf so the two formats produce identical engine data.
 pub fn load(
-    scene: &ufbx::Scene,
     vgpu: &VirtualGpu,
+    scene: &ufbx::Scene,
+    mesh_vault: &MeshAssetVault,
     source_file: &PathBuf,
     texture_resolver: Option<&TextureResolver>,
 ) -> (SkeletalMesh, AHashMap<String, PreProcessAnimation>) {
     let mut node_id_map: AHashMap<String, usize> = AHashMap::new();
     let mut meshes = AHashMap::new();
 
+    let mut hasher = AHasher::default();
+    source_file.hash(&mut hasher);
+    let hash = hasher.finish();
+
     // load nodes, skipping ufbx's synthetic scene root
     let nodes = scene
         .root_node
         .children
         .iter()
-        .map(|node| unpack_node(vgpu, &mut meshes, &mut node_id_map, node))
+        .map(|node| unpack_node(vgpu, &mut meshes, &mut node_id_map, mesh_vault, node, hash))
         .collect::<Vec<_>>();
 
     // load material (only the first, mirroring the gltf loader)
@@ -73,7 +79,9 @@ fn unpack_node(
     vgpu: &VirtualGpu,
     meshes: &mut AHashMap<usize, SkeletalSubMesh>,
     node_id_map: &mut AHashMap<String, usize>,
+    mesh_vault: &MeshAssetVault,
     node: &ufbx::Node,
+    hash: u64
 ) -> ModelBone {
     let id = node.element.typed_id as u16;
 
@@ -89,7 +97,7 @@ fn unpack_node(
         let idx = mesh.element.typed_id as usize;
         if !meshes.contains_key(&idx) {
             let label = node.element.name.to_string();
-            meshes.insert(idx, unpack_mesh(vgpu, mesh, label, id as usize));
+            meshes.insert(idx, unpack_mesh(vgpu, mesh, mesh_vault, label, hash, id as usize));
         }
         idx
     });
@@ -98,7 +106,7 @@ fn unpack_node(
     let children = node
         .children
         .iter()
-        .map(|child| unpack_node(vgpu, meshes, node_id_map, child))
+        .map(|child| unpack_node(vgpu, meshes, node_id_map, mesh_vault, child, hash))
         .collect();
 
     // save node ID to node ID tracking map
@@ -112,46 +120,57 @@ fn unpack_node(
 fn unpack_mesh(
     vgpu: &VirtualGpu,
     mesh: &ufbx::Mesh,
+    mesh_vault: &MeshAssetVault,
     label: String,
+    hash: u64,
     parent_id: usize,
 ) -> SkeletalSubMesh {
     let skin = mesh.skin_deformers.iter().next();
 
-    let mut vertices = Vec::<SkeletalMeshVertex>::with_capacity(mesh.num_indices);
-    let mut indices = Vec::<u32>::with_capacity(mesh.num_triangles * 3);
-    let mut tri_buf = Vec::new();
+    let local_hash = hash + parent_id as u64;
+    let handle = 
+        if let Some(handle) = mesh_vault.get_handle(local_hash) { 
+            handle 
+        } else {
+            let mut vertices = Vec::<SkeletalMeshVertex>::with_capacity(mesh.num_indices);
+            let mut indices = Vec::<u32>::with_capacity(mesh.num_triangles * 3);
+            let mut tri_buf = Vec::new();
 
-    for face in mesh.faces.iter() {
-        ufbx::triangulate_face_vec(&mut tri_buf, mesh, *face);
+            for face in mesh.faces.iter() {
+                ufbx::triangulate_face_vec(&mut tri_buf, mesh, *face);
 
-        for &pi in tri_buf.iter() {
-            let pi = pi as usize;
-            let position = mesh.vertex_position[pi];
-            let normal = if mesh.vertex_normal.exists { mesh.vertex_normal[pi] } else { ufbx::Vec3::default() };
-            let uv = if mesh.vertex_uv.exists { mesh.vertex_uv[pi] } else { ufbx::Vec2::default() };
+                for &pi in tri_buf.iter() {
+                    let pi = pi as usize;
+                    let position = mesh.vertex_position[pi];
+                    let normal = if mesh.vertex_normal.exists { mesh.vertex_normal[pi] } else { ufbx::Vec3::default() };
+                    let uv = if mesh.vertex_uv.exists { mesh.vertex_uv[pi] } else { ufbx::Vec2::default() };
 
-            let (joints, weights) = skin
-                .map(|skin| vertex_skin(skin, mesh.vertex_indices[pi] as usize))
-                .unwrap_or(([parent_id as u32, 0, 0, 0], [0.0, 0.0, 0.0, 0.0]));
+                    let (joints, weights) = skin
+                        .map(|skin| vertex_skin(skin, mesh.vertex_indices[pi] as usize))
+                        .unwrap_or(([parent_id as u32, 0, 0, 0], [0.0, 0.0, 0.0, 0.0]));
 
-            indices.push(vertices.len() as u32);
-            vertices.push(SkeletalMeshVertex {
-                position: Vec3::new(position.x as f32, position.y as f32, position.z as f32).into(),
-                // FBX authors V with 0 at the bottom (Maya/OpenGL convention); this engine's
-                // shader samples with V=0 at the top (glTF convention, same as the PNG's row order).
-                uvs: Vec2::new(uv.x as f32, 1.0 - uv.y as f32).into(),
-                normal: Vec3::new(normal.x as f32, normal.y as f32, normal.z as f32).into(),
-                weights: Vec4::from_array(weights).into(),
-                joints: UVec4::from_array(joints).into(),
-            });
-        }
-    }
+                    indices.push(vertices.len() as u32);
+                    vertices.push(SkeletalMeshVertex {
+                        position: Vec3::new(position.x as f32, position.y as f32, position.z as f32).into(),
+                        // FBX authors V with 0 at the bottom (Maya/OpenGL convention); this engine's
+                        // shader samples with V=0 at the top (glTF convention, same as the PNG's row order).
+                        uvs: Vec2::new(uv.x as f32, 1.0 - uv.y as f32).into(),
+                        normal: Vec3::new(normal.x as f32, normal.y as f32, normal.z as f32).into(),
+                        weights: Vec4::from_array(weights).into(),
+                        joints: UVec4::from_array(joints).into(),
+                    });
+                }
+            }
 
-    println!("Load fbx mesh with {} vertices and {} indices", vertices.len(), indices.len());
+            println!("Load fbx mesh with {} vertices and {} indices", vertices.len(), indices.len());
 
+            mesh_vault.load_raw(local_hash, MeshAsset(Box::new(SkeletalRenderableMesh { 
+                vertices: ImmutableBuffer::new(vgpu, &vertices, wgpu::BufferUsages::VERTEX),
+                indices: ImmutableBuffer::new(vgpu, &indices, wgpu::BufferUsages::INDEX)
+            })))
+        };
     SkeletalSubMesh {
-        vertices: ImmutableBuffer::new(vgpu, &vertices, wgpu::BufferUsages::VERTEX),
-        indices: ImmutableBuffer::new(vgpu, &indices, wgpu::BufferUsages::INDEX),
+        mesh: handle,
         label,
         visible: true,
     }

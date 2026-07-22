@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, SimpleTexturedMaterial, Transform};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshAssetVault, MeshRef, SimpleTexturedMaterial, Transform};
 use gltf::Gltf;
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
@@ -22,6 +22,7 @@ fn main() -> anyhow::Result<()> {
 #[system]
 fn startup_triangle(
     graphics: Res<Graphics>,
+    meshes: Res<MeshAssetVault>,
     textures: Res<BindlessArrayTextureVault>
 ) {
     world.insert(
@@ -35,7 +36,7 @@ fn startup_triangle(
     println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
     let file = File::open(&path)?;
     let gltf = Gltf::from_reader(BufReader::new(file))?;
-    let (model, animations) = loader::gltf::load(gltf, &*graphics, &path, &path, None);
+    let (model, animations) = loader::gltf::load(gltf, &*graphics, &meshes, &path, &path, None);
 
     let material = model.material().as_ref()
         .and_then(|std_mat| std_mat.albedo_texture.as_ref())

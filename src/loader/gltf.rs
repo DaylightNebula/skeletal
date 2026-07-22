@@ -1,12 +1,13 @@
-use std::{borrow::Cow, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, hash::{Hash, Hasher}, path::PathBuf, sync::Arc};
 
-use ahash::AHashMap;
+use ahash::{AHashMap, AHasher};
 use base64::{Engine, prelude::BASE64_STANDARD};
+use gearbox::{MeshAsset, MeshAssetVault};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 use gltf::Gltf;
 use mutual::CowData;
 
-use crate::{data::*, mesh::*};
+use crate::{SkeletalRenderableMesh, data::*, model::*};
 
 const OCTET_STREAM: &str = "data:application/octet-stream;base64,";
 const PNG_STREAM: &str = "data:image/png;base64,";
@@ -14,6 +15,7 @@ const PNG_STREAM: &str = "data:image/png;base64,";
 pub fn load<'a>(
     gltf: Gltf,
     vgpu: &VirtualGpu,
+    mesh_vault: &MeshAssetVault,
     asset_file: &PathBuf,
     source_file: &PathBuf,
     extra_buffer: Option<Cow<'_, [u8]>>
@@ -21,6 +23,11 @@ pub fn load<'a>(
     let mut node_id_map: AHashMap<String, usize> = AHashMap::new();
     let mut nodes: Vec<ModelBone> = Vec::new();
     let mut meshes = AHashMap::new();
+
+    // calculate hash
+    let mut hasher = AHasher::default();
+    source_file.hash(&mut hasher);
+    let hash = hasher.finish();
 
     // get filename and parent folder
     let mut out_folder_path = asset_file.clone();
@@ -46,7 +53,7 @@ pub fn load<'a>(
     for scene in gltf.scenes() {
         for node in scene.nodes() {
             // load mesh
-            let node = unpack_node(vgpu, &mut meshes, &mut node_id_map, &buffers, &node, &out_folder_path, filename, 0);
+            let node = unpack_node(vgpu, &mut meshes, &mut node_id_map, mesh_vault, &buffers, &node, &out_folder_path, filename, hash, 0);
             nodes.push(node);
         }
     }
@@ -185,10 +192,12 @@ fn unpack_node<'a>(
     vgpu: &VirtualGpu,
     meshes: &mut AHashMap<usize, SkeletalSubMesh>,
     node_id_map: &mut AHashMap<String, usize>,
+    mesh_vault: &MeshAssetVault,
     buffers: &Vec<Vec<u8>>,
     node: &gltf::Node<'a>,
     out_folder_path: &PathBuf,
     filename: &str,
+    hash: u64,
     depth: usize,
 ) -> ModelBone {
     // load transform
@@ -200,7 +209,7 @@ fn unpack_node<'a>(
 
     // load mesh if necessary
     if let Some(mesh) = node.mesh() {
-        let (idx, asset) = unpack_mesh(vgpu, buffers, &mesh, node.name().map(|a| a.to_string()), node.index());
+        let (idx, asset) = unpack_mesh(vgpu, mesh_vault, buffers, &mesh, node.name().map(|a| a.to_string()), hash, node.index());
         meshes.insert(idx, asset);
     }
 
@@ -208,7 +217,7 @@ fn unpack_node<'a>(
     let children = node
         .children()
         .into_iter()
-        .map(|child| unpack_node(vgpu, meshes, node_id_map, buffers, &child, out_folder_path, filename, depth + 1))
+        .map(|child| unpack_node(vgpu, meshes, node_id_map, mesh_vault, buffers, &child, out_folder_path, filename, hash, depth + 1))
         .collect();
 
     // save node ID to node ID tracking map
@@ -229,82 +238,93 @@ fn unpack_node<'a>(
 
 fn unpack_mesh<'mesh>(
     vgpu: &VirtualGpu,
+    mesh_vault: &MeshAssetVault,
     buffers: &Vec<Vec<u8>>,
     mesh: &gltf::Mesh<'mesh>,
     label: Option<String>,
+    hash: u64,
     parent_id: usize
 ) -> (usize, SkeletalSubMesh) {
-    let mut final_vertices = Vec::new();
-    let mut final_indices = Vec::new();
-
-    // load primitives
-    mesh.primitives().into_iter().for_each(|primitive| {
-        let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
-
-        // read primitive
-        let mut positions = reader
-            .read_positions()
-            .expect("Expecting positions in gltf.");
-        let mut normals = reader.read_normals().expect("Expecting normals in gltf.");
-        let mut tex_coords = reader
-            .read_tex_coords(0)
-            .expect("Expecting TexCoords(0) in gltf.")
-            .into_f32();
-        let indices = reader.read_indices().expect("Expecting indices in gltf.");
-
-        // read weights
-        let weights = reader.read_weights(0);
-        let mut weights = if weights.is_some() {
-            weights.unwrap().into_f32().collect::<Vec<_>>()
+    // create mesh
+    let local_hash = hash + parent_id as u64;
+    let handle = 
+        if let Some(handle) = mesh_vault.get_handle(local_hash) { 
+            handle 
         } else {
-            vec![[0.0, 0.0, 0.0, 0.0]; positions.len()]
-        }
-        .into_iter();
+            let mut final_vertices = Vec::new();
+            let mut final_indices = Vec::new();
 
-        // read joints
-        let joints = reader.read_joints(0);
-        let mut joints = if joints.is_some() {
-            joints.unwrap().into_u16().collect::<Vec<_>>()
-        } else {
-            vec![[parent_id as u16, 0, 0, 0]; positions.len()]
-        }
-        .into_iter();
+            // load primitives
+            mesh.primitives().into_iter().for_each(|primitive| {
+                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
-        // load vertices
-        let mut vertices = Vec::<SkeletalMeshVertex>::with_capacity(positions.len());
-        while let Some(vertex) = positions.next() {
-            let normal = normals.next().unwrap();
-            let tex_coord = tex_coords.next().unwrap();
-            let weight = weights.next().unwrap();
-            let joints = joints.next().unwrap().map(|a| a as u32);
+                // read primitive
+                let mut positions = reader
+                    .read_positions()
+                    .expect("Expecting positions in gltf.");
+                let mut normals = reader.read_normals().expect("Expecting normals in gltf.");
+                let mut tex_coords = reader
+                    .read_tex_coords(0)
+                    .expect("Expecting TexCoords(0) in gltf.")
+                    .into_f32();
+                let indices = reader.read_indices().expect("Expecting indices in gltf.");
 
-            vertices.push(SkeletalMeshVertex {
-                position: Vec3::from_array(vertex).into(),
-                uvs: Vec2::from_array(tex_coord).into(),
-                normal: Vec3::from_array(normal).into(),
-                weights: Vec4::from_array(weight).into(),
-                joints: UVec4::from_array(joints).into()
+                // read weights
+                let weights = reader.read_weights(0);
+                let mut weights = if weights.is_some() {
+                    weights.unwrap().into_f32().collect::<Vec<_>>()
+                } else {
+                    vec![[0.0, 0.0, 0.0, 0.0]; positions.len()]
+                }
+                .into_iter();
+
+                // read joints
+                let joints = reader.read_joints(0);
+                let mut joints = if joints.is_some() {
+                    joints.unwrap().into_u16().collect::<Vec<_>>()
+                } else {
+                    vec![[parent_id as u16, 0, 0, 0]; positions.len()]
+                }
+                .into_iter();
+
+                // load vertices
+                let mut vertices = Vec::<SkeletalMeshVertex>::with_capacity(positions.len());
+                while let Some(vertex) = positions.next() {
+                    let normal = normals.next().unwrap();
+                    let tex_coord = tex_coords.next().unwrap();
+                    let weight = weights.next().unwrap();
+                    let joints = joints.next().unwrap().map(|a| a as u32);
+
+                    vertices.push(SkeletalMeshVertex {
+                        position: Vec3::from_array(vertex).into(),
+                        uvs: Vec2::from_array(tex_coord).into(),
+                        normal: Vec3::from_array(normal).into(),
+                        weights: Vec4::from_array(weight).into(),
+                        joints: UVec4::from_array(joints).into()
+                    });
+                }
+
+                // load indices
+                let indices_offset = final_indices.len() as u32;
+                let indices = indices
+                    .into_u32()
+                    .map(|a| a as u32 + indices_offset)
+                    .collect::<Vec<_>>();
+
+                // create mesh
+                println!("Load gltf mesh with {} vertices and {} indices", vertices.len(), indices.len());
+                final_vertices.extend(vertices);
+                final_indices.extend(indices);
             });
-        }
 
-        // load indices
-        let indices_offset = final_indices.len() as u32;
-        let indices = indices
-            .into_u32()
-            .map(|a| a as u32 + indices_offset)
-            .collect::<Vec<_>>();
-
-        // create mesh
-        println!("Load gltf mesh with {} vertices and {} indices", vertices.len(), indices.len());
-        final_vertices.extend(vertices);
-        final_indices.extend(indices);
-    });
-
-    // create mesh file
+            mesh_vault.load_raw(local_hash, MeshAsset(Box::new(SkeletalRenderableMesh { 
+                vertices: ImmutableBuffer::new(vgpu, &final_vertices, wgpu::BufferUsages::VERTEX),
+                indices: ImmutableBuffer::new(vgpu, &final_indices, wgpu::BufferUsages::INDEX)
+            })))
+        };
     let m_idx = mesh.index();
     let mesh = SkeletalSubMesh {
-        vertices: ImmutableBuffer::new(vgpu, &final_vertices, wgpu::BufferUsages::VERTEX),
-        indices: ImmutableBuffer::new(vgpu, &final_indices, wgpu::BufferUsages::INDEX),
+        mesh: handle,
         label: label.unwrap_or_else(|| format!("#unnamed_{}", mesh.index())),
         visible: true
     };

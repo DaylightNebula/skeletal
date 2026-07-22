@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, SimpleTexturedMaterial, Transform};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshAssetVault, MeshRef, SimpleTexturedMaterial, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
 use skeletal::loader;
@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
 #[system]
 fn startup_triangle(
     graphics: Res<Graphics>,
+    meshes: Res<MeshAssetVault>,
     textures: Res<BindlessArrayTextureVault>
 ) {
     world.insert(
@@ -35,7 +36,7 @@ fn startup_triangle(
 
     // this fbx's diffuse texture reference is stale (baked from the artist's machine and
     // under a different filename), so point it at the texture we actually have on disk.
-    let (model, animations) = loader::fbx::load(&scene, &*graphics, &path, None);
+    let (model, animations) = loader::fbx::load(&*graphics, &scene, &meshes, &path, None);
 
     let material = model.material().as_ref()
         .and_then(|std_mat| std_mat.albedo_texture.as_ref())
