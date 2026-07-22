@@ -1,12 +1,14 @@
+use std::sync::Arc;
+
 use ahash::AHashMap;
 use anarchy::{ComponentMeta, Entity, World, extract_comps_distributed, macros::{AsAny, Getters, GettersMut}};
-use gearbox::{AssetVault, Handle, Mesh, MeshAsset, MeshAssetVault, Transform};
+use gearbox::{Asset, AssetVault, Handle, Mesh, MeshAsset, MeshAssetVault, Transform};
 use magician_vgpu::{BindGroupProvider, BindableObject, Buffer, MutableBuffer, Pipeline, PipelineBuilder, ShaderSource, ShaderType, SinglePass, VirtualGpu, WritableBuffer, glam::*};
 use mutual::{CastableSharedData, CowData, MutCastGuard, RefCastGuard};
 use skeletal_shaders::{AnimationInfo, AnimationInfoInput};
 use wgpu::ShaderStages;
 
-use crate::{anim::Animator, data::*};
+use crate::{SkeletalMeshVault, SkeletalMeshVaultInner, anim::Animator, data::*};
 
 pub type SkeletalMeshVertex = skeletal_shaders::VertexInput;
 
@@ -30,6 +32,16 @@ pub struct SkeletalSubMesh {
 pub struct SkeletalAnimationBuffers {
     pub buffer: MutableBuffer<AnimationInfo>,
     pub bindable: BindableObject<skeletal_shaders::AnimationInfoInput>
+}
+
+impl Asset for SkeletalMesh {
+    type Vault = SkeletalMeshVault;
+    type HandleTracker = (u64, Arc<SkeletalMeshVaultInner>);
+
+    fn unload_threshold() -> usize { 2 }
+    fn unload(tracker: &Self::HandleTracker) {
+        tracker.1.remove(tracker.0);
+    }
 }
 
 #[allow(unused)]

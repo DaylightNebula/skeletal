@@ -14,7 +14,6 @@ const PNG_STREAM: &str = "data:image/png;base64,";
 
 pub fn load<'a>(
     gltf: Gltf,
-    vgpu: &VirtualGpu,
     mesh_vault: &MeshAssetVault,
     asset_file: &PathBuf,
     source_file: &PathBuf,
@@ -53,7 +52,7 @@ pub fn load<'a>(
     for scene in gltf.scenes() {
         for node in scene.nodes() {
             // load mesh
-            let node = unpack_node(vgpu, &mut meshes, &mut node_id_map, mesh_vault, &buffers, &node, &out_folder_path, filename, hash, 0);
+            let node = unpack_node(&mut meshes, &mut node_id_map, mesh_vault, &buffers, &node, &out_folder_path, filename, hash, 0);
             nodes.push(node);
         }
     }
@@ -189,7 +188,6 @@ fn unpack_animation<'a>(
 }
 
 fn unpack_node<'a>(
-    vgpu: &VirtualGpu,
     meshes: &mut AHashMap<usize, SkeletalSubMesh>,
     node_id_map: &mut AHashMap<String, usize>,
     mesh_vault: &MeshAssetVault,
@@ -209,7 +207,7 @@ fn unpack_node<'a>(
 
     // load mesh if necessary
     if let Some(mesh) = node.mesh() {
-        let (idx, asset) = unpack_mesh(vgpu, mesh_vault, buffers, &mesh, node.name().map(|a| a.to_string()), hash, node.index());
+        let (idx, asset) = unpack_mesh(mesh_vault, buffers, &mesh, node.name().map(|a| a.to_string()), hash, node.index());
         meshes.insert(idx, asset);
     }
 
@@ -217,7 +215,7 @@ fn unpack_node<'a>(
     let children = node
         .children()
         .into_iter()
-        .map(|child| unpack_node(vgpu, meshes, node_id_map, mesh_vault, buffers, &child, out_folder_path, filename, hash, depth + 1))
+        .map(|child| unpack_node(meshes, node_id_map, mesh_vault, buffers, &child, out_folder_path, filename, hash, depth + 1))
         .collect();
 
     // save node ID to node ID tracking map
@@ -237,7 +235,6 @@ fn unpack_node<'a>(
 }
 
 fn unpack_mesh<'mesh>(
-    vgpu: &VirtualGpu,
     mesh_vault: &MeshAssetVault,
     buffers: &Vec<Vec<u8>>,
     mesh: &gltf::Mesh<'mesh>,
@@ -317,10 +314,11 @@ fn unpack_mesh<'mesh>(
                 final_indices.extend(indices);
             });
 
-            mesh_vault.load_raw(local_hash, MeshAsset(Box::new(SkeletalRenderableMesh { 
-                vertices: ImmutableBuffer::new(vgpu, &final_vertices, wgpu::BufferUsages::VERTEX),
-                indices: ImmutableBuffer::new(vgpu, &final_indices, wgpu::BufferUsages::INDEX)
-            })))
+            todo!("Load mesh from non vgpu req load mode")
+            // mesh_vault.load_raw(local_hash, MeshAsset(Box::new(SkeletalRenderableMesh { 
+            //     vertices: ImmutableBuffer::new(vgpu, &final_vertices, wgpu::BufferUsages::VERTEX),
+            //     indices: ImmutableBuffer::new(vgpu, &final_indices, wgpu::BufferUsages::INDEX)
+            // })))
         };
     let m_idx = mesh.index();
     let mesh = SkeletalSubMesh {

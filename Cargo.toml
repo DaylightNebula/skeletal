@@ -20,6 +20,7 @@ ufbx = "0.11.2"
 base64 = "0.22.1"
 ahash = "0.8.12"
 wgpu = "29.0"
+derive_more = "2.1.1"
 
 [dev-dependencies]
 iso_ui = { path = "../iso_ui" }
