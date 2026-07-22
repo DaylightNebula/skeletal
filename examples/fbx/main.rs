@@ -29,33 +29,35 @@ fn startup_triangle(
             .build()
     );
 
-    let path: PathBuf = "./examples/fbx/SK_Character_Alien_Male_01.fbx".into();
-    println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
-    let scene = ufbx::load_file(path.to_str().expect("Non UTF-8 fbx path"), loader::fbx::load_opts())
-        .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))?;
+    for z in -1 .. 2 {
+        let path: PathBuf = "./examples/fbx/SK_Character_Alien_Male_01.fbx".into();
+        println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
+        let scene = ufbx::load_file(path.to_str().expect("Non UTF-8 fbx path"), loader::fbx::load_opts())
+            .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))?;
 
-    // this fbx's diffuse texture reference is stale (baked from the artist's machine and
-    // under a different filename), so point it at the texture we actually have on disk.
-    let (model, animations) = loader::fbx::load(&*graphics, &scene, &meshes, &path, None);
+        // this fbx's diffuse texture reference is stale (baked from the artist's machine and
+        // under a different filename), so point it at the texture we actually have on disk.
+        let (model, animations) = loader::fbx::load(&*graphics, &scene, &meshes, &path, None);
 
-    let material = model.material().as_ref()
-        .and_then(|std_mat| std_mat.albedo_texture.as_ref())
-        .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
-        .map(|handle| SimpleTexturedMaterial::new(handle))
-        .map(|textured_mat| MaterialRef::new(textured_mat))
-        .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
+        let material = model.material().as_ref()
+            .and_then(|std_mat| std_mat.albedo_texture.as_ref())
+            .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
+            .map(|handle| SimpleTexturedMaterial::new(handle))
+            .map(|textured_mat| MaterialRef::new(textured_mat))
+            .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
 
-    let animator = Animator::new(&model, &animations);
-    // animator.play("2H_Melee_Attack_Spin", true);
+        let animator = Animator::new(&model, &animations);
+        // animator.play("2H_Melee_Attack_Spin", true);
 
-    world.insert(
-        EntityBuilder::default()
-            .add(Transform::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE * 0.025))
-            .add(material)
-            .add(animator)
-            .add(MeshRef::new(model))
-            .build()
-    );
+        world.insert(
+            EntityBuilder::default()
+                .add(Transform::new(Vec3::new(z as f32 * 5.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE * 0.025))
+                .add(material)
+                .add(animator)
+                .add(MeshRef::new(model))
+                .build()
+        );
+    }
 }
 
 #[system]
