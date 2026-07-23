@@ -1,6 +1,6 @@
-use std::{borrow::Cow, hash::{Hash, Hasher}, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
-use ahash::{AHashMap, AHasher};
+use ahash::AHashMap;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use gearbox::{MeshAsset, MeshAssetVault};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
@@ -18,16 +18,12 @@ pub fn load<'a>(
     mesh_vault: &MeshAssetVault,
     asset_file: &PathBuf,
     source_file: &PathBuf,
-    extra_buffer: Option<Cow<'_, [u8]>>
+    extra_buffer: Option<Cow<'_, [u8]>>,
+    hash: u64
 ) -> (SkeletalMesh, AHashMap<String, PreProcessAnimation>) {
     let mut node_id_map: AHashMap<String, usize> = AHashMap::new();
     let mut nodes: Vec<ModelBone> = Vec::new();
     let mut meshes = AHashMap::new();
-
-    // calculate hash
-    let mut hasher = AHasher::default();
-    source_file.hash(&mut hasher);
-    let hash = hasher.finish();
 
     // get filename and parent folder
     let mut out_folder_path = asset_file.clone();

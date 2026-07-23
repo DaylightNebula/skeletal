@@ -1,6 +1,6 @@
-use std::{hash::{Hash, Hasher}, path::{Path, PathBuf}};
+use std::path::{Path, PathBuf};
 
-use ahash::{AHashMap, AHasher};
+use ahash::AHashMap;
 use anarchy::macros::warn;
 use gearbox::{MeshAsset, MeshAssetVault};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
@@ -20,15 +20,12 @@ pub fn load(
     vgpu: &VirtualGpu,
     scene: &ufbx::Scene,
     mesh_vault: &MeshAssetVault,
-    source_file: &PathBuf,
+    source_file: Option<&PathBuf>,
     texture_resolver: Option<&TextureResolver>,
+    hash: u64
 ) -> (SkeletalMesh, AHashMap<String, PreProcessAnimation>) {
     let mut node_id_map: AHashMap<String, usize> = AHashMap::new();
     let mut meshes = AHashMap::new();
-
-    let mut hasher = AHasher::default();
-    source_file.hash(&mut hasher);
-    let hash = hasher.finish();
 
     // load nodes, skipping ufbx's synthetic scene root
     let nodes = scene
@@ -199,7 +196,7 @@ fn vertex_skin(skin: &ufbx::SkinDeformer, control_point: usize) -> ([u32; 4], [f
     (joints, weights)
 }
 
-fn unpack_material(source_file: &PathBuf, material: &ufbx::Material, resolver: Option<&TextureResolver>) -> SkeletalMaterial {
+fn unpack_material(source_file: Option<&PathBuf>, material: &ufbx::Material, resolver: Option<&TextureResolver>) -> SkeletalMaterial {
     let diffuse = material.fbx.diffuse_color.value_vec4;
     let emissive = material.fbx.emission_color.value_vec4;
 
@@ -218,7 +215,7 @@ fn unpack_material(source_file: &PathBuf, material: &ufbx::Material, resolver: O
     }
 }
 
-fn load_texture(source_file: &PathBuf, texture: Option<&ufbx::Texture>, resolver: Option<&TextureResolver>) -> Option<Vec<u8>> {
+fn load_texture(source_file: Option<&PathBuf>, texture: Option<&ufbx::Texture>, resolver: Option<&TextureResolver>) -> Option<Vec<u8>> {
     let texture = texture?;
     // prefer relative_filename as the resolver key since it's what's actually authored
     // in the fbx; fall back to whatever other name ufbx has for the texture
@@ -250,9 +247,8 @@ fn load_texture(source_file: &PathBuf, texture: Option<&ufbx::Texture>, resolver
     // FBX files exported on Windows store `relative_filename` with `\` separators,
     // which PathBuf::push treats as a single literal (non-splitting) component on Unix.
     let rel = rel.replace('\\', "/");
+    let Some(source_file) = source_file else { return None };
     let dir = source_file.parent().unwrap_or_else(|| Path::new("."));
-
-
 
     let direct = dir.join(&rel);
     if let Ok(bytes) = std::fs::read(&direct) {

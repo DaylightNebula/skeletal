@@ -4,12 +4,12 @@ use cell::{App, Graphics};
 use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
-use skeletal::{SkeletalMeshVault, SkeletalMeshVaultPlugin};
+use skeletal::{SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
 
 fn main() -> anyhow::Result<()> {
     App::new()
         .add_plugin(GearboxRenderPlugin)
-        .add_plugin(SkeletalMeshVaultPlugin)
+        .add_plugin(SkeletalMeshPlugin)
         .on_render_startup(startup_triangle)
         .on_render_update(update_triangle)
         .run()
@@ -33,7 +33,7 @@ fn startup_triangle(
     // let file = File::open(&path)?;
     // let gltf = Gltf::from_reader(BufReader::new(file))?;
     // let (model, animations) = loader::gltf::load(&gltf, &meshes, &path, &path, None);
-    let model = meshes.load(AssetContent::LocalPath("./examples/gltf/Barbarian.glb".to_string()))?;
+    let model = meshes.load(AssetContent::LocalPath("./examples/gltf/Barbarian.glb".to_string()), SkeletalMeshLoadType::GLTF)?;
 
     // let material = model.material().as_ref()
     //     .and_then(|std_mat| std_mat.albedo_texture.as_ref())

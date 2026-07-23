@@ -1,7 +1,7 @@
 use std::{hash::{Hash, Hasher}, path::PathBuf, sync::Arc};
 
 use ahash::AHasher;
-use anarchy::{Res, Scheduler, macros::{Resource, system}};
+use anarchy::{Res, Scheduler, anyhow, macros::{Resource, system}};
 use cell::{App, Graphics, Plugin};
 use derive_more::{Deref, DerefMut};
 use gltf::Gltf;
@@ -18,6 +18,12 @@ impl Plugin for SkeletalMeshVaultPlugin {
     }
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SkeletalMeshLoadType {
+    GLTF,
+    FBX
+}
+
 #[derive(Resource, Default, Deref, DerefMut)]
 pub struct SkeletalMeshVault(Arc<SkeletalMeshVaultInner>);
 
@@ -25,8 +31,12 @@ pub struct SkeletalMeshVault(Arc<SkeletalMeshVaultInner>);
 pub struct SkeletalMeshVaultInner {
     pub mesh: DashMap<u64, (SkeletalMeshHandle, CowData<SkeletalMesh>)>,
     pub preload: DashMap<u64, SkeletalMeshHandle>,
-    pub inprogress: DashMap<u64, (SkeletalMeshHandle, Gltf)>
+    pub inprogress_gltf: DashMap<u64, (SkeletalMeshHandle, Gltf)>,
+    pub inprogress_fbx: DashMap<u64, (SkeletalMeshHandle, ufbx::SceneRoot)>
 }
+
+unsafe impl Send for SkeletalMeshVaultInner {}
+unsafe impl Sync for SkeletalMeshVaultInner {}
 
 impl SkeletalMeshVault {
     pub fn new() -> Self { Self::default() }
@@ -54,6 +64,7 @@ impl SkeletalMeshVaultInner {
 
 impl AssetVault for SkeletalMeshVault {
     type Asset = SkeletalMesh;
+    type LoadType = SkeletalMeshLoadType;
     type LoadResult = SkeletalMeshHandle;
     type Lookup = SkeletalMeshHandle;
     type LookupResult = RefCowData<SkeletalMesh>;
@@ -62,7 +73,7 @@ impl AssetVault for SkeletalMeshVault {
         self.mesh.get(&handle.inner().0).map(|a| a.1.get_ref())
     }
 
-    fn load(&self, content: AssetContent) -> anarchy::anyhow::Result<Self::LoadResult> {
+    fn load(&self, content: AssetContent, ty: SkeletalMeshLoadType) -> anarchy::anyhow::Result<Self::LoadResult> {
         // get content hash
         let mut hasher = AHasher::default();
         content.hash(&mut hasher);
@@ -70,7 +81,8 @@ impl AssetVault for SkeletalMeshVault {
 
         // attempt to find previous handle with the same hash and return that
         if let Some(handle) = self.mesh.get(&hash) { return Ok(handle.0.clone()); }
-        if let Some(handle) = self.inprogress.get(&hash) { return Ok(handle.0.clone()); }
+        if let Some(handle) = self.inprogress_gltf.get(&hash) { return Ok(handle.0.clone()); }
+        if let Some(handle) = self.inprogress_fbx.get(&hash) { return Ok(handle.0.clone()); }
         if let Some(handle) = self.preload.get(&hash) { return Ok(handle.clone()); }
 
         // create new handle and store inprogress
@@ -86,10 +98,20 @@ impl AssetVault for SkeletalMeshVault {
                 .await
                 .expect("Failed to read skeletal mesh content");
             
-            let gltf = Gltf::from_slice(&bytes)
-                .expect("Failed to read gltf from bytes");
+            match ty {
+                SkeletalMeshLoadType::GLTF => {
+                    let gltf = Gltf::from_slice(&bytes)
+                        .expect("Failed to read gltf from bytes");
+                    inner.inprogress_gltf.insert(hash, (handle2, gltf));
+                },
+                SkeletalMeshLoadType::FBX => {
+                    let fbx = ufbx::load_memory(&bytes, loader::fbx::load_opts())
+                        .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))
+                        .expect("Failed to load FBX");
+                    inner.inprogress_fbx.insert(hash, (handle2, fbx));
+                },
+            }
 
-            inner.inprogress.insert(hash, (handle2, gltf));
             inner.preload.remove(&hash);
         });
 
@@ -103,21 +125,39 @@ pub fn load_inprogress(
     vault: Res<SkeletalMeshVault>,
     meshes: Res<MeshAssetVault>
 ) {
-    // take copy of all hashes in the inprogress map
-    let inprogress_hashes = vault.inprogress.iter()
+    // take copy of all hashes in the inprogress maps
+    let inprogress_gltf_hashes = vault.inprogress_gltf.iter()
+        .map(|a| *a.key())
+        .collect::<Vec<_>>();
+    let inprogress_fbx_hashes = vault.inprogress_fbx.iter()
         .map(|a| *a.key())
         .collect::<Vec<_>>();
 
-    for hash in inprogress_hashes.into_iter() {
+
+    for hash in inprogress_gltf_hashes.into_iter() {
         {
-            let Some(content) = vault.inprogress.get(&hash)
+            let Some(content) = vault.inprogress_gltf.get(&hash)
                 else { continue };
             let handle = content.0.clone();
             let gltf = &content.1;
-            let (mesh, _animations) = loader::gltf::load(gltf, &graphics, &meshes, &PathBuf::new(), &PathBuf::new(), None);
+            let (mesh, _animations) = loader::gltf::load(gltf, &graphics, &meshes, &PathBuf::new(), &PathBuf::new(), None, hash);
             vault.mesh.insert(hash, (handle, CowData::new(mesh)));
         }
         
-        vault.inprogress.remove(&hash);
+        vault.inprogress_gltf.remove(&hash);
+    }
+
+
+    for hash in inprogress_fbx_hashes.into_iter() {
+        {
+            let Some(content) = vault.inprogress_fbx.get(&hash)
+                else { continue };
+            let handle = content.0.clone();
+            let fbx = &content.1;
+            let (mesh, _animations) = loader::fbx::load(&graphics, &fbx, &meshes, None, None, hash);
+            vault.mesh.insert(hash, (handle, CowData::new(mesh)));
+        }
+        
+        vault.inprogress_fbx.remove(&hash);
     }
 }

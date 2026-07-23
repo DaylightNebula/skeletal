@@ -17,6 +17,6 @@ pub use vault::*;
 pub struct SkeletalMeshPlugin;
 impl Plugin for SkeletalMeshPlugin {
     fn build(self, app: App) -> App {
-        app.add_plugin(SkeletalMeshPlugin)
+        app.add_plugin(SkeletalMeshVaultPlugin)
     }
 }

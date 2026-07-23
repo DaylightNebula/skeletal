@@ -1,16 +1,15 @@
-use std::path::PathBuf;
-
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshAssetVault, MeshRef, SimpleTexturedMaterial, Transform};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
-use skeletal::loader;
+use skeletal::{SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
 
 fn main() -> anyhow::Result<()> {
     App::new()
         .add_plugin(GearboxRenderPlugin)
+        .add_plugin(SkeletalMeshPlugin)
         .on_render_startup(startup_triangle)
         .on_render_update(update_triangle)
         .run()
@@ -19,7 +18,7 @@ fn main() -> anyhow::Result<()> {
 #[system]
 fn startup_triangle(
     graphics: Res<Graphics>,
-    meshes: Res<MeshAssetVault>,
+    meshes: Res<SkeletalMeshVault>,
     textures: Res<BindlessArrayTextureVault>
 ) {
     world.insert(
@@ -30,23 +29,25 @@ fn startup_triangle(
     );
 
     for z in -1 .. 2 {
-        let path: PathBuf = "./examples/fbx/SK_Character_Alien_Male_01.fbx".into();
-        println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
-        let scene = ufbx::load_file(path.to_str().expect("Non UTF-8 fbx path"), loader::fbx::load_opts())
-            .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))?;
+        // let path: PathBuf = "./examples/fbx/SK_Character_Alien_Male_01.fbx".into();
+        // println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
+        // let scene = ufbx::load_file(path.to_str().expect("Non UTF-8 fbx path"), loader::fbx::load_opts())
+        //     .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))?;
 
-        // this fbx's diffuse texture reference is stale (baked from the artist's machine and
-        // under a different filename), so point it at the texture we actually have on disk.
-        let (model, animations) = loader::fbx::load(&*graphics, &scene, &meshes, &path, None);
+        // // this fbx's diffuse texture reference is stale (baked from the artist's machine and
+        // // under a different filename), so point it at the texture we actually have on disk.
+        // let (model, animations) = loader::fbx::load(&*graphics, &scene, &meshes, Some(&path), None, 0);
+        let model = meshes.load(AssetContent::LocalPath("./examples/fbx/SK_Character_Alien_Male_01.fbx".to_string()), SkeletalMeshLoadType::FBX)?;
 
-        let material = model.material().as_ref()
-            .and_then(|std_mat| std_mat.albedo_texture.as_ref())
-            .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
-            .map(|handle| SimpleTexturedMaterial::new(handle))
-            .map(|textured_mat| MaterialRef::new(textured_mat))
-            .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
+        // let material = model.material().as_ref()
+        //     .and_then(|std_mat| std_mat.albedo_texture.as_ref())
+        //     .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
+        //     .map(|handle| SimpleTexturedMaterial::new(handle))
+        //     .map(|textured_mat| MaterialRef::new(textured_mat))
+        //     .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
+        let material = MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0)));
 
-        let animator = Animator::new(&model, &animations);
+        let animator = Animator::empty();
         // animator.play("2H_Melee_Attack_Spin", true);
 
         world.insert(
