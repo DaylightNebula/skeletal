@@ -5,7 +5,6 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use gearbox::{MeshAsset, MeshAssetVault};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 use gltf::Gltf;
-use mutual::CowData;
 
 use crate::{SkeletalRenderableMesh, data::*, model::*};
 
@@ -89,9 +88,7 @@ pub fn load<'a>(
     (
         SkeletalMesh { 
             bones: nodes, node_id_map, 
-            skin, meshes, material,
-            instance_buffer: CowData::null(),
-            animation_buffers: CowData::null()
+            skin, meshes, material
         },
         animations
     )

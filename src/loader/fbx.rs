@@ -4,7 +4,6 @@ use ahash::AHashMap;
 use anarchy::macros::warn;
 use gearbox::{MeshAsset, MeshAssetVault};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
-use mutual::CowData;
 
 use crate::{SkeletalMesh, SkeletalMeshVertex, SkeletalRenderableMesh, SkeletalSubMesh, data::*};
 
@@ -64,9 +63,7 @@ pub fn load(
             node_id_map,
             skin,
             meshes,
-            material,
-            instance_buffer: CowData::null(),
-            animation_buffers: CowData::null(),
+            material
         },
         animations,
     )

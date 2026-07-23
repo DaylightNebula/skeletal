@@ -41,7 +41,7 @@ unsafe impl Sync for SkeletalMeshVaultInner {}
 impl SkeletalMeshVault {
     pub fn new() -> Self { Self::default() }
 
-    pub fn has(&self, handle: &SkeletalMeshHandle) -> bool { self.mesh.contains_key(&handle.inner().0) }
+    pub fn has(&self, handle: &SkeletalMeshHandle) -> bool { self.mesh.contains_key(&handle.handle().inner().0) }
 
     pub fn get_handle(&self, hash: u64) -> Option<SkeletalMeshHandle> {
         self.mesh.get(&hash)
@@ -50,7 +50,7 @@ impl SkeletalMeshVault {
 
     pub fn load_raw(&self, hash: u64, asset: SkeletalMesh) -> SkeletalMeshHandle {
         let handle = Handle::new((hash, Arc::clone(&self.0)));
-        let handle = SkeletalMeshHandle(handle);
+        let handle = SkeletalMeshHandle::new(handle);
         self.mesh.insert(hash, (handle.clone(), CowData::new(asset)));
         return handle;
     }
@@ -70,7 +70,7 @@ impl AssetVault for SkeletalMeshVault {
     type LookupResult = RefCowData<SkeletalMesh>;
 
     fn get(&self, handle: &Self::Lookup) -> Option<Self::LookupResult> {
-        self.mesh.get(&handle.inner().0).map(|a| a.1.get_ref())
+        self.mesh.get(&handle.handle().inner().0).map(|a| a.1.get_ref())
     }
 
     fn load(&self, content: AssetContent, ty: SkeletalMeshLoadType) -> anarchy::anyhow::Result<Self::LoadResult> {
@@ -87,7 +87,7 @@ impl AssetVault for SkeletalMeshVault {
 
         // create new handle and store inprogress
         let handle = Handle::new((hash, Arc::clone(&self.0)));
-        let handle = SkeletalMeshHandle(handle);
+        let handle = SkeletalMeshHandle::new(handle);
         self.preload.insert(hash, handle.clone());
 
         // start load
