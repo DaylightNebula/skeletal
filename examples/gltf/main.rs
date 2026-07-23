@@ -1,19 +1,15 @@
-use std::fs::File;
-use std::io::BufReader;
-use std::path::PathBuf;
-
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshAssetVault, MeshRef, SimpleTexturedMaterial, Transform};
-use gltf::Gltf;
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
-use skeletal::loader;
+use skeletal::{SkeletalMeshVault, SkeletalMeshVaultPlugin};
 
 fn main() -> anyhow::Result<()> {
     App::new()
         .add_plugin(GearboxRenderPlugin)
+        .add_plugin(SkeletalMeshVaultPlugin)
         .on_render_startup(startup_triangle)
         .on_render_update(update_triangle)
         .run()
@@ -22,7 +18,7 @@ fn main() -> anyhow::Result<()> {
 #[system]
 fn startup_triangle(
     graphics: Res<Graphics>,
-    meshes: Res<MeshAssetVault>,
+    meshes: Res<SkeletalMeshVault>,
     textures: Res<BindlessArrayTextureVault>
 ) {
     world.insert(
@@ -32,21 +28,23 @@ fn startup_triangle(
             .build()
     );
 
-    let path: PathBuf = "./examples/gltf/Characters.glb".into();
-    println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
-    let file = File::open(&path)?;
-    let gltf = Gltf::from_reader(BufReader::new(file))?;
-    let (model, animations) = loader::gltf::load(gltf, &meshes, &path, &path, None);
+    // let path: PathBuf = "./examples/gltf/Characters.glb".into();
+    // println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
+    // let file = File::open(&path)?;
+    // let gltf = Gltf::from_reader(BufReader::new(file))?;
+    // let (model, animations) = loader::gltf::load(&gltf, &meshes, &path, &path, None);
+    let model = meshes.load(AssetContent::LocalPath("./examples/gltf/Barbarian.glb".to_string()))?;
 
-    let material = model.material().as_ref()
-        .and_then(|std_mat| std_mat.albedo_texture.as_ref())
-        .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
-        .map(|handle| SimpleTexturedMaterial::new(handle))
-        .map(|textured_mat| MaterialRef::new(textured_mat))
-        .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
+    // let material = model.material().as_ref()
+    //     .and_then(|std_mat| std_mat.albedo_texture.as_ref())
+    //     .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
+    //     .map(|handle| SimpleTexturedMaterial::new(handle))
+    //     .map(|textured_mat| MaterialRef::new(textured_mat))
+    //     .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
+    let material = MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0)));
 
-    let mut animator = Animator::new(&model, &animations);
-    animator.play("2H_Melee_Attack_Spin", true);
+    let animator = Animator::empty();
+    // animator.play("2H_Melee_Attack_Spin", true);
 
     world.insert(
         EntityBuilder::default()

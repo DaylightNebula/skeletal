@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use anarchy::{ComponentMeta, Entity, World, extract_comps_distributed, macros::{AsAny, Getters, GettersMut}};
+use anarchy::{ComponentMeta, Entity, World, anyhow::{self, bail}, extract_comps_distributed, macros::{AsAny, Getters, GettersMut}};
 use gearbox::{Asset, AssetVault, Handle, Mesh, MeshAsset, MeshAssetVault, Transform};
 use magician_vgpu::{BindGroupProvider, BindableObject, Buffer, MutableBuffer, Pipeline, PipelineBuilder, ShaderSource, ShaderType, SinglePass, VirtualGpu, WritableBuffer, glam::*};
 use mutual::{CastableSharedData, CowData, MutCastGuard, RefCastGuard};
@@ -70,9 +70,9 @@ impl Mesh for SkeletalMesh {
         pass: &mut SinglePass, 
         world: &World,
         entity: &Entity
-    ) {
+    ) -> anyhow::Result<()> {
         let Some(vault) = world.get_resource_ref::<MeshAssetVault>()
-            else { return };
+            else { bail!("Missing mesh vault") };
 
         // extract transform and mesh components
         let (mut comps, _ctx) = extract_comps_distributed(
@@ -170,6 +170,8 @@ impl Mesh for SkeletalMesh {
                 bone
             );
         }
+
+        Ok(())
     }
 }
 
@@ -181,20 +183,22 @@ fn recr_bone(
     entity: &Entity,
     mesh: &SkeletalMesh,
     bone: &ModelBone,
-) {
+) -> anyhow::Result<()> {
     // attempt to find bone mesh to draw
     let bone_mesh = bone.mesh.map(|a| mesh.meshes.get(&a)).flatten();
     if let Some(bone_mesh) = bone_mesh {
         if bone_mesh.visible {
             // draw bone specific mesh
             if let Some(bone_mesh) = vault.get(&bone_mesh.mesh) {
-                bone_mesh.draw(vgpu, pass, world, entity);
+                bone_mesh.draw(vgpu, pass, world, entity)?;
             }
         }
     }
     
     // draw children bones
     for child in &bone.children {
-        recr_bone(vgpu, vault, pass, world, entity, mesh, child);
+        recr_bone(vgpu, vault, pass, world, entity, mesh, child)?;
     }
+
+    Ok(())
 }

@@ -35,6 +35,14 @@ impl Animator {
         }
     }
 
+    /// Create a new empty animator with no animations.
+    pub fn empty() -> Self {
+        Self {
+            animations: AHashMap::default(),
+            state: None
+        }
+    }
+
     /// Create a new `Animator` for a `SkeletalMesh` and a map of `PreProcessAnimation`.
     /// This allows animations from any source to be applied to any `SkeletalMesh`.  The
     /// mesh provided should at a minimum be using the same skeleton as the object this
