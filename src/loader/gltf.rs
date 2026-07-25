@@ -1,8 +1,9 @@
 use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
 use ahash::AHashMap;
+use anarchy::World;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use gearbox::{AssetContent, AssetVault, BindlessArrayTextureType, BindlessArrayTextureVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
+use gearbox::{AssetContent, BindlessArrayTextureType, BindlessArrayTextureVault, LoadableAssetVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 use gltf::Gltf;
 
@@ -15,6 +16,7 @@ const PNG_STREAM: &str = "data:image/png;base64,";
 /// Mirrors `loader::fbx::load` so the two formats produce identical engine data.
 pub fn load<'a>(
     gltf: &Gltf,
+    world: &World,
     vgpu: &VirtualGpu,
     mesh_vault: &MeshAssetVault,
     texture_vault: &BindlessArrayTextureVault,
@@ -63,7 +65,7 @@ pub fn load<'a>(
         .next()
         .map(|material| unpack_material(textures, &material))
         .and_then(|material| material.albedo_texture)
-        .and_then(|material| texture_vault.load(AssetContent::Binary(material.into_boxed_slice()), BindlessArrayTextureType::PNG).ok())
+        .and_then(|material| texture_vault.load(world, AssetContent::Binary(material.into_boxed_slice()), BindlessArrayTextureType::PNG).ok())
         .map(|handle| SimpleTexturedMaterial::new(handle));
 
     // load animations

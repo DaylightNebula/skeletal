@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
-use anarchy::macros::warn;
-use gearbox::{AssetContent, AssetVault, BindlessArrayTextureType, BindlessArrayTextureVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
+use anarchy::{World, macros::warn};
+use gearbox::{AssetContent, BindlessArrayTextureType, BindlessArrayTextureVault, LoadableAssetVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 
 use crate::{SkeletalMesh, SkeletalMeshVertex, SkeletalRenderableMesh, SkeletalSubMesh, data::*};
@@ -16,8 +16,9 @@ pub type TextureResolver<'a> = dyn Fn(&str) -> Option<PathBuf> + 'a;
 /// Load an already-parsed ufbx `Scene` into a `SkeletalMesh` plus its animations.
 /// Mirrors `loader::gltf::load` so the two formats produce identical engine data.
 pub fn load(
-    vgpu: &VirtualGpu,
     scene: &ufbx::Scene,
+    world: &World,
+    vgpu: &VirtualGpu,
     mesh_vault: &MeshAssetVault,
     texture_vault: &BindlessArrayTextureVault,
     source_file: Option<&PathBuf>,
@@ -39,7 +40,7 @@ pub fn load(
     let material = scene.materials.iter().next()
         .map(|material| unpack_material(source_file, material, texture_resolver))
         .and_then(|material| material.albedo_texture)
-        .and_then(|material| texture_vault.load(AssetContent::Binary(material.into_boxed_slice()), BindlessArrayTextureType::PNG).ok())
+        .and_then(|material| texture_vault.load(world, AssetContent::Binary(material.into_boxed_slice()), BindlessArrayTextureType::PNG).ok())
         .map(|handle| SimpleTexturedMaterial::new(handle));
 
     // load animations

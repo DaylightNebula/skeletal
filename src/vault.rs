@@ -1,12 +1,12 @@
 use std::{hash::{Hash, Hasher}, path::PathBuf, sync::Arc};
 
 use ahash::AHasher;
-use anarchy::{Res, Scheduler, anyhow, macros::{Resource, system}};
+use anarchy::{Res, Scheduler, World, anyhow, macros::{Resource, system}};
 use cell::{App, Graphics, Plugin};
 use derive_more::{Deref, DerefMut};
 use gltf::Gltf;
 use mutual::{CowData, DashMap, RefCowData};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Handle, HotSwapMaterial, MeshAssetVault, glam::Vec4};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Handle, HotSwapMaterial, LoadableAssetVault, MeshAssetVault, glam::Vec4};
 
 use crate::{SkeletalMesh, SkeletalMeshHandle, loader};
 
@@ -87,14 +87,17 @@ impl SkeletalMeshVaultInner {
 
 impl AssetVault for SkeletalMeshVault {
     type Asset = SkeletalMesh;
-    type LoadType = SkeletalMeshLoadType;
-    type LoadResult = SkeletalMeshHandle;
     type Lookup = SkeletalMeshHandle;
     type LookupResult = RefCowData<SkeletalMesh>;
 
     fn get(&self, handle: &Self::Lookup) -> Option<Self::LookupResult> {
         self.mesh.get(&handle.handle().inner().0).map(|a| a.1.get_ref())
     }
+}
+
+impl LoadableAssetVault for SkeletalMeshVault {
+    type LoadType = SkeletalMeshLoadType;
+    type LoadResult = SkeletalMeshHandle;
 
     /// Queue `content` for loading as `ty` and return a handle immediately.
     /// Hashes `content` first and, if a handle already exists for that hash
@@ -104,7 +107,7 @@ impl AssetVault for SkeletalMeshVault {
     /// stashing the result in `inprogress_gltf`/`inprogress_fbx` for the
     /// `load_inprogress` render-schedule system to finish (uploading GPU
     /// resources requires the render thread, so that part can't happen here).
-    fn load(&self, content: AssetContent, ty: SkeletalMeshLoadType) -> anarchy::anyhow::Result<Self::LoadResult> {
+    fn load(&self, _world: &World, content: AssetContent, ty: SkeletalMeshLoadType) -> anarchy::anyhow::Result<Self::LoadResult> {
         // get content hash
         let mut hasher = AHasher::default();
         content.hash(&mut hasher);
@@ -179,7 +182,7 @@ pub fn load_inprogress(
                 else { continue };
             let handle = content.0.clone();
             let gltf = &content.1;
-            let (mesh, _animations) = loader::gltf::load(gltf, &graphics, &meshes, &textures, &PathBuf::new(), &PathBuf::new(), None, hash);
+            let (mesh, _animations) = loader::gltf::load(gltf, &world, &graphics, &meshes, &textures, &PathBuf::new(), &PathBuf::new(), None, hash);
             if let Some(material) = mesh.material.as_ref() {
                 handle.material().set(Box::new(material.clone()));
             }
@@ -196,7 +199,7 @@ pub fn load_inprogress(
                 else { continue };
             let handle = content.0.clone();
             let fbx = &content.1;
-            let (mesh, _animations) = loader::fbx::load(&graphics, &fbx, &meshes, &textures, None, None, hash);
+            let (mesh, _animations) = loader::fbx::load(&fbx, &world, &graphics, &meshes, &textures, None, None, hash);
             if let Some(material) = mesh.material.as_ref() {
                 handle.material().set(Box::new(material.clone()));
             }

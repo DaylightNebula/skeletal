@@ -5,7 +5,7 @@ use anarchy::anyhow::{self, bail};
 use anarchy::{EntityBuilder, Query, Res, ResMut, WorldDatabase};
 use cell::{EguiPlugin, Graphics};
 use cell::{App, EguiCtx, egui::egui};
-use gearbox::{AssetContent, AssetVault, BindlessArrayTextureVault, MaterialRef, MeshAssetVault, MeshRef, glam::*};
+use gearbox::{AssetContent, AssetVault, BindlessArrayTextureVault, LoadableAssetVault, MaterialRef, MeshAssetVault, MeshRef, glam::*};
 use gearbox::{Camera, GearboxRenderPlugin, Transform};
 use skeletal::anim::Animator;
 use skeletal::{SkeletalMeshHandle, SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
@@ -40,7 +40,7 @@ fn setup(
     );
     
     let Some(path) = get_path() else { bail!("No path provided") };
-    let mesh = meshes.load(AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)?;
+    let mesh = meshes.load(world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)?;
     let material = MaterialRef::new(mesh.material().clone());
     let animator = Animator::empty();
 

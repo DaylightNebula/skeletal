@@ -1,7 +1,7 @@
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{AssetContent, AssetVault, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform};
+use gearbox::{AssetContent, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, LoadableAssetVault, MaterialRef, MeshRef, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
 use skeletal::{SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
@@ -29,7 +29,7 @@ fn startup_triangle(
     );
 
     // load mesh and material
-    let mesh = meshes.load(AssetContent::LocalPath("./examples/gltf/Barbarian.glb".into()), SkeletalMeshLoadType::GLTF)?;
+    let mesh = meshes.load(world, AssetContent::LocalPath("./examples/gltf/Barbarian.glb".into()), SkeletalMeshLoadType::GLTF)?;
     let material = MaterialRef::new(mesh.material().clone());
 
     let animator = Animator::empty();
