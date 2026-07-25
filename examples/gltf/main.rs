@@ -1,6 +1,6 @@
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
-use cell::{App, Graphics};
+use cell::App;
 use gearbox::{AssetContent, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, LoadableAssetVault, MaterialRef, MeshRef, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
@@ -17,7 +17,6 @@ fn main() -> anyhow::Result<()> {
 
 #[system]
 fn startup_triangle(
-    graphics: Res<Graphics>,
     meshes: Res<SkeletalMeshVault>,
     textures: Res<BindlessArrayTextureVault>
 ) {
