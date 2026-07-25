@@ -1,6 +1,9 @@
 use ahash::AHashMap;
 use magician_vgpu::glam::*;
 
+/// A material as decoded from a loaded model file (glTF/FBX), before it is
+/// uploaded to the GPU. Textures are kept as raw encoded bytes (e.g. PNG);
+/// the vault turns the `albedo_texture` into a `SimpleTexturedMaterial` handle.
 #[derive(Default, Debug, Clone)]
 pub struct SkeletalMaterial {
     pub albedo_texture: Option<Vec<u8>>,
@@ -17,12 +20,18 @@ pub struct SkeletalMaterial {
 }
 
 /// A node of a model that contains an id, meshes, and children nodes.
+///
+/// `id` is the node's index as assigned by the source file's loader, used to key
+/// `Animation`/`Channel` data and the computed bone matrices during rendering.
+/// `mesh` is an optional reference into the owning `SkeletalMesh`'s `meshes` map
+/// (keyed by that source format's mesh index), based on the path format
+/// `"{file path}#Mesh{mesh id}"`. `children` are this node's child nodes.
 #[derive(Debug, Clone)]
 pub struct ModelBone {
-    pub id: u16, // The index of this node, the render handler will reference this.
+    pub id: u16,
     pub transform: Mat4,
-    pub mesh: Option<usize>, // Optional reference to the known render handle.  Based off path format: "{file path}#Mesh{mesh id}"
-    pub children: Vec<ModelBone>, // The children of this node.
+    pub mesh: Option<usize>,
+    pub children: Vec<ModelBone>,
 }
 
 /// Contains all information related to a single hard-coded animation.
@@ -78,7 +87,13 @@ pub struct Channel {
     pub scale: Option<(Interpolation, Vec<f32>, Vec<Vec3>)>,
 }
 
-/// All forms of supported interpolation.
+/// All forms of supported interpolation between two keyframes.
+///
+/// `Linear` blends directly between the two values. `Step` holds the first
+/// keyframe's value until the next keyframe is reached (no blending). `Wave`
+/// eases in/out with a sine curve instead of blending linearly; it is also
+/// what glTF's `CubicSpline` interpolation is mapped to, since true cubic
+/// spline (in/out tangents) interpolation isn't implemented.
 #[derive(Debug, Clone, Copy)]
 pub enum Interpolation {
     Linear,
@@ -102,6 +117,8 @@ pub struct PreProcessChannel {
     pub scale: Option<(Interpolation, Vec<f32>, Vec<Vec3>)>,
 }
 
+/// The per-vertex buffer layout (position, uvs, normal, skin weights, joint indices)
+/// matching `skeletal_shaders::VertexInput`, at shader locations 0-4.
 pub fn vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
     use std::mem;
     wgpu::VertexBufferLayout {
@@ -137,6 +154,8 @@ pub fn vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
+/// The per-instance buffer layout (a `Mat4` model matrix, one row per shader
+/// location) matching `skeletal_shaders::InstanceInput`, at shader locations 5-8.
 pub fn instance_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
     use std::mem;
     wgpu::VertexBufferLayout {

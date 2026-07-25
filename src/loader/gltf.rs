@@ -11,6 +11,8 @@ use crate::{SkeletalRenderableMesh, data::*, model::*};
 const OCTET_STREAM: &str = "data:application/octet-stream;base64,";
 const PNG_STREAM: &str = "data:image/png;base64,";
 
+/// Load an already-parsed `Gltf` document into a `SkeletalMesh` plus its animations.
+/// Mirrors `loader::fbx::load` so the two formats produce identical engine data.
 pub fn load<'a>(
     gltf: &Gltf,
     vgpu: &VirtualGpu,

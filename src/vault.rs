@@ -10,6 +10,9 @@ use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault
 
 use crate::{SkeletalMesh, SkeletalMeshHandle, loader};
 
+/// Registers the `SkeletalMeshVault` resource and the render-schedule system
+/// that finishes loading meshes queued by it. Required for `SkeletalMeshVault::load`
+/// to ever resolve a queued glTF/FBX file into a usable `SkeletalMesh`.
 pub struct SkeletalMeshVaultPlugin;
 impl Plugin for SkeletalMeshVaultPlugin {
     fn build(self, app: App) -> App {
@@ -18,15 +21,25 @@ impl Plugin for SkeletalMeshVaultPlugin {
     }
 }
 
+/// The source file format to parse a `SkeletalMeshVault::load` call's content as.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SkeletalMeshLoadType {
     GLTF,
     FBX
 }
 
+/// Resource that loads and caches `SkeletalMesh`es, deduplicated by content hash.
+/// A cheap `Arc`-backed handle to `SkeletalMeshVaultInner`; cloning it shares the
+/// same underlying cache.
 #[derive(Resource, Default, Deref, DerefMut)]
 pub struct SkeletalMeshVault(Arc<SkeletalMeshVaultInner>);
 
+/// Tracks a mesh through its load pipeline, one map per stage: `preload` holds
+/// a handle while its file bytes are being read asynchronously; once read, the
+/// bytes are parsed (off the render thread) into `inprogress_gltf` or
+/// `inprogress_fbx`; `load_inprogress` then converts that parsed scene into GPU
+/// resources on the render thread and moves the result into `mesh`, the final
+/// cache queried by `get`/`has`. A hash only ever lives in one map at a time.
 #[derive(Default)]
 pub struct SkeletalMeshVaultInner {
     pub mesh: DashMap<u64, (SkeletalMeshHandle, CowData<SkeletalMesh>)>,
@@ -41,13 +54,17 @@ unsafe impl Sync for SkeletalMeshVaultInner {}
 impl SkeletalMeshVault {
     pub fn new() -> Self { Self::default() }
 
+    /// Whether a fully-loaded mesh exists in the cache for this handle.
     pub fn has(&self, handle: &SkeletalMeshHandle) -> bool { self.mesh.contains_key(&handle.handle().inner().0) }
 
+    /// Look up an already-cached handle by content hash, if a mesh has finished loading for it.
     pub fn get_handle(&self, hash: u64) -> Option<SkeletalMeshHandle> {
         self.mesh.get(&hash)
             .map(|a| a.0.clone())
     }
 
+    /// Insert an already-constructed `SkeletalMesh` directly into the cache under
+    /// `hash`, skipping the async file-load pipeline, and return its handle.
     pub fn load_raw(&self, hash: u64, asset: SkeletalMesh) -> SkeletalMeshHandle {
         let handle = Handle::new((hash, Arc::clone(&self.0)));
         // let material: HotSwapMaterial = CowData::new(Box::new(asset.material.unwrap_or(|| BasicMaterial::new(Vec4::ONE))));
@@ -61,6 +78,8 @@ impl SkeletalMeshVault {
 }
 
 impl SkeletalMeshVaultInner {
+    /// Drop a fully-loaded mesh from the cache. Called by `SkeletalMesh::unload`
+    /// once its handle's reference count drops to the unload threshold.
     pub fn remove(&self, hash: u64) -> Option<(u64, (SkeletalMeshHandle, CowData<SkeletalMesh>))> {
         self.mesh.remove(&hash)
     }
@@ -77,6 +96,14 @@ impl AssetVault for SkeletalMeshVault {
         self.mesh.get(&handle.handle().inner().0).map(|a| a.1.get_ref())
     }
 
+    /// Queue `content` for loading as `ty` and return a handle immediately.
+    /// Hashes `content` first and, if a handle already exists for that hash
+    /// (loaded, or anywhere in the load pipeline), returns the existing handle
+    /// instead of loading a duplicate. Otherwise spawns an async task that
+    /// reads the content's bytes and parses them into a `Gltf`/`ufbx::SceneRoot`,
+    /// stashing the result in `inprogress_gltf`/`inprogress_fbx` for the
+    /// `load_inprogress` render-schedule system to finish (uploading GPU
+    /// resources requires the render thread, so that part can't happen here).
     fn load(&self, content: AssetContent, ty: SkeletalMeshLoadType) -> anarchy::anyhow::Result<Self::LoadResult> {
         // get content hash
         let mut hasher = AHasher::default();
@@ -124,6 +151,12 @@ impl AssetVault for SkeletalMeshVault {
     }
 }
 
+/// Finishes loading every mesh currently sitting in `inprogress_gltf`/`inprogress_fbx`:
+/// turns each parsed scene into GPU resources (requires the render thread, hence
+/// this being a render-schedule system) and moves the result into the vault's
+/// `mesh` cache. Runs at `i32::MIN`, i.e. after every other render-schedule
+/// system this frame, so a mesh finished here becomes visible to the rest of
+/// the render schedule starting next frame.
 #[system(std::i32::MIN)]
 pub fn load_inprogress(
     graphics: Res<Graphics>,

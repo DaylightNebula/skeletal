@@ -14,7 +14,7 @@ use crate::{SkeletalMesh, SkeletalMeshVertex, SkeletalRenderableMesh, SkeletalSu
 pub type TextureResolver<'a> = dyn Fn(&str) -> Option<PathBuf> + 'a;
 
 /// Load an already-parsed ufbx `Scene` into a `SkeletalMesh` plus its animations.
-/// Mirrors `loader::load` for gltf so the two formats produce identical engine data.
+/// Mirrors `loader::gltf::load` so the two formats produce identical engine data.
 pub fn load(
     vgpu: &VirtualGpu,
     scene: &ufbx::Scene,

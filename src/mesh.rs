@@ -7,6 +7,10 @@ use wgpu::ShaderStages;
 
 use crate::{Animator, ModelBone, SkeletalAnimationBuffers, SkeletalMesh, SkeletalMeshVault, SkeletalMeshVertex, instance_buffer_layout, vertex_buffer_layout};
 
+/// The GPU vertex/index buffers for a single sub-mesh of a `SkeletalMesh`.
+/// Its `create_pipeline` panics because it is only ever drawn through
+/// `SkeletalMeshHandle::draw`, which builds the real pipeline and binds the
+/// per-frame animation data before delegating here.
 #[derive(AsAny)]
 pub struct SkeletalRenderableMesh {
     pub vertices: ImmutableBuffer<[SkeletalMeshVertex]>,
@@ -38,6 +42,13 @@ impl Mesh for SkeletalRenderableMesh {
     }
 }
 
+/// The `Mesh` component put on an entity to render a `SkeletalMesh`. Wraps a
+/// vault `handle` plus per-entity GPU state lazily built on first draw: the
+/// `instance_buffer` (this entity's transform), `animation_buffers` (this
+/// frame's bone/node matrices), and `invisible_bones`, a set of bone labels
+/// whose sub-mesh should be skipped when drawing (see `recr_bone`). Cloning
+/// a handle keeps the same underlying mesh but starts with fresh (null) GPU
+/// state, since that state is per-entity, not shared.
 #[derive(AsAny, Getters)]
 pub struct SkeletalMeshHandle {
     pub(crate) handle: Handle<SkeletalMesh>,
@@ -209,6 +220,8 @@ impl Mesh for SkeletalMeshHandle {
     }
 }
 
+/// Recursively draws `bone`'s sub-mesh (if any and not in `handle`'s
+/// `invisible_bones`) then recurses into its children.
 fn recr_bone(
     vgpu: &VirtualGpu,
     vault: &MeshAssetVault,

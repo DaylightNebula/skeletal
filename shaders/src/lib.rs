@@ -3,6 +3,9 @@ use magician_macros::{ShaderGroup, ShaderLayout, shader};
 use magician_rust::{Mat4, UVec4, Vec2, Vec3, Vec4, length_vec4};
 use magician_vgpu::macros::{BindableObject, UniformBufferObject};
 
+/// Per-vertex data for the skeletal vertex shader: position, UV, normal, and up
+/// to 4 skin weights with the joint indices they apply to. Layout matches
+/// `crate::vertex_buffer_layout()` in the main `skeletal` crate.
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy, ShaderLayout)]
 pub struct VertexInput {
@@ -13,6 +16,9 @@ pub struct VertexInput {
     #[location = 4] pub joints: UVec4
 }
 
+/// Per-instance model matrix, passed as 4 `Vec4` rows (`mm0..mm3`) since a
+/// `Mat4` can't be bound as a single vertex attribute. Layout matches
+/// `crate::instance_buffer_layout()` in the main `skeletal` crate.
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy, ShaderLayout)]
 pub struct InstanceInput {
@@ -44,11 +50,18 @@ pub struct CameraInput {
 }
 
 
+/// Bind group (group 3) wrapping `AnimationInfo`, bound per-bone while drawing
+/// a `SkeletalMeshHandle` (see `SkeletalAnimationBuffers`).
 #[derive(ShaderGroup, BindableObject)]
 pub struct AnimationInfoInput {
     #[uniform] pub info: AnimationInfo
 }
 
+/// This frame's world matrices for one skeleton, capped at 32 joints/nodes.
+/// `bones[i]` is `world_matrix(i) * inverse_bind_pose(i)`, used to skin
+/// vertices with non-zero weights. `nodes[i]` is the plain world matrix of
+/// node `i`, used for rigid (unskinned) meshes attached directly to a bone
+/// (props, weapons, etc). See `skeletal_vertex_main` for how the two are chosen.
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy, UniformBufferObject)]
 pub struct AnimationInfo {
@@ -56,6 +69,9 @@ pub struct AnimationInfo {
     pub nodes: [Mat4; 32]
 }
 
+/// Skins the vertex by its joint weights if it has any (blending up to 4 bone
+/// matrices), otherwise treats it as rigidly attached to its first joint's node
+/// (a prop/weapon parented to a bone rather than a real skinned mesh vertex).
 #[shader("./shader_out", vertex)]
 pub fn skeletal_vertex_main(
     #[group = 3] anim_info: AnimationInfoInput,

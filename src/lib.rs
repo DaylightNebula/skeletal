@@ -14,6 +14,8 @@ pub use mesh::*;
 pub use model::*;
 pub use vault::*;
 
+/// Adds skinned-mesh loading (glTF/FBX) and rendering to a `cell::App`.
+/// Registers the `SkeletalMeshVault` resource; see `vault::SkeletalMeshVaultPlugin`.
 pub struct SkeletalMeshPlugin;
 impl Plugin for SkeletalMeshPlugin {
     fn build(self, app: App) -> App {
