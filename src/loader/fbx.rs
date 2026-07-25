@@ -170,8 +170,7 @@ fn unpack_mesh(
         };
     SkeletalSubMesh {
         mesh: handle,
-        label,
-        visible: true,
+        label
     }
 }
 

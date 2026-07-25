@@ -21,8 +21,7 @@ pub struct SkeletalMesh {
 
 pub struct SkeletalSubMesh {
     pub mesh: Handle<MeshAsset>,
-    pub label: String,
-    pub visible: bool
+    pub label: String
 }
 
 pub struct SkeletalAnimationBuffers {

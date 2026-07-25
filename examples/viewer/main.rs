@@ -8,7 +8,7 @@ use cell::{App, EguiCtx, egui::egui};
 use gearbox::{AssetContent, AssetVault, BindlessArrayTextureVault, MaterialRef, MeshAssetVault, MeshRef, glam::*};
 use gearbox::{Camera, GearboxRenderPlugin, Transform};
 use skeletal::anim::Animator;
-use skeletal::{SkeletalMesh, SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
+use skeletal::{SkeletalMeshHandle, SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
 
 #[derive(Debug, Resource)]
 pub struct ViewerData {
@@ -62,7 +62,8 @@ fn update(
     graphics: Res<Graphics>,
     egui: Res<EguiCtx>,
     meshes: Res<MeshAssetVault>,
-    query: Query<(&mut Animator, &mut MeshRef)>,
+    skvault: Res<SkeletalMeshVault>,
+    query: Query<(&mut Animator, &MeshRef)>,
     data: ResMut<ViewerData>
 ) {
     egui::Window::new("Animations").show(&egui.context, |ui| {
@@ -104,10 +105,20 @@ fn update(
     });
 
     egui::Window::new("Mesh").show(&egui.context, |ui| {
-        for (_, mut mesh) in query.as_iter() {
-            let Some(mesh) = mesh.0.as_any_mut().downcast_mut::<SkeletalMesh>() else { continue };
-            for (_submesh_id, submesh) in mesh.meshes_mut().iter_mut() {
-                ui.checkbox(&mut submesh.visible, submesh.label.clone());
+        for (_, handle) in query.as_iter() {
+            let Some(handle) = handle.0.as_any().downcast_ref::<SkeletalMeshHandle>() else { continue };
+            let Some(mesh) = skvault.get(handle) else { continue };
+
+            for (_, mesh) in mesh.meshes() {
+                let mut is_visible = !handle.invisible_bones().contains(&mesh.label);
+
+                if ui.checkbox(&mut is_visible, mesh.label.clone()).changed() {
+                    if is_visible {
+                        handle.invisible_bones().remove(&mesh.label);
+                    } else {
+                        handle.invisible_bones().insert(mesh.label.clone());
+                    }
+                }
             }
         }
     });

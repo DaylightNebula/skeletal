@@ -1,7 +1,7 @@
 use anarchy::{ComponentMeta, Entity, World, anyhow::{self, Context, bail}, extract_comps_distributed, macros::{AsAny, Getters}};
 use gearbox::{AssetVault, Handle, HotSwapMaterial, Mesh, MeshAssetVault, Transform, glam::Mat4};
 use magician_vgpu::{BindGroupProvider, BindableObject, Buffer, DrawSettings, ImmutableBuffer, MutableBuffer, Pipeline, PipelineBuilder, ShaderSource, ShaderType, SinglePass, VirtualGpu, WritableBuffer};
-use mutual::{CastableSharedData, CowData, MutCastGuard, RefCastGuard};
+use mutual::{CastableSharedData, CowData, DashSet, MutCastGuard, RefCastGuard};
 use skeletal_shaders::{AnimationInfo, AnimationInfoInput};
 use wgpu::ShaderStages;
 
@@ -43,7 +43,8 @@ pub struct SkeletalMeshHandle {
     pub(crate) handle: Handle<SkeletalMesh>,
     pub(crate) material: HotSwapMaterial,
     pub(crate) instance_buffer: CowData<MutableBuffer<[Mat4]>>,
-    pub(crate) animation_buffers: CowData<SkeletalAnimationBuffers>
+    pub(crate) animation_buffers: CowData<SkeletalAnimationBuffers>,
+    pub(crate) invisible_bones: DashSet<String>
 }
 
 impl SkeletalMeshHandle {
@@ -52,7 +53,8 @@ impl SkeletalMeshHandle {
             handle,
             material,
             instance_buffer: CowData::null(),
-            animation_buffers: CowData::null()
+            animation_buffers: CowData::null(),
+            invisible_bones: DashSet::new()
         }
     }
 }
@@ -63,7 +65,8 @@ impl Clone for SkeletalMeshHandle {
             handle: self.handle.clone(),
             material: self.material.clone(),
             instance_buffer: CowData::null(),
-            animation_buffers: CowData::null()
+            animation_buffers: CowData::null(),
+            invisible_bones: DashSet::new()
         }
     }
 }
@@ -196,6 +199,7 @@ impl Mesh for SkeletalMeshHandle {
                 pass,
                 world,
                 entity,
+                &self,
                 &mesh,
                 bone
             )?;
@@ -211,13 +215,14 @@ fn recr_bone(
     pass: &mut SinglePass,
     world: &World,
     entity: &Entity,
+    handle: &SkeletalMeshHandle,
     mesh: &SkeletalMesh,
     bone: &ModelBone,
 ) -> anyhow::Result<()> {
     // attempt to find bone mesh to draw
     let bone_mesh = bone.mesh.map(|a| mesh.meshes.get(&a)).flatten();
     if let Some(bone_mesh) = bone_mesh {
-        if bone_mesh.visible {
+        if !handle.invisible_bones().contains(&bone_mesh.label) {
             // draw bone specific mesh
             if let Some(bone_mesh) = vault.get(&bone_mesh.mesh) {
                 bone_mesh.draw(vgpu, pass, world, entity)?;
@@ -227,7 +232,7 @@ fn recr_bone(
     
     // draw children bones
     for child in &bone.children {
-        recr_bone(vgpu, vault, pass, world, entity, mesh, child)?;
+        recr_bone(vgpu, vault, pass, world, entity, handle, mesh, child)?;
     }
 
     Ok(())

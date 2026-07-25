@@ -320,8 +320,7 @@ fn unpack_mesh<'mesh>(
     let m_idx = mesh.index();
     let mesh = SkeletalSubMesh {
         mesh: handle,
-        label: label.unwrap_or_else(|| format!("#unnamed_{}", mesh.index())),
-        visible: true
+        label: label.unwrap_or_else(|| format!("#unnamed_{}", mesh.index()))
     };
 
     (m_idx, mesh)
