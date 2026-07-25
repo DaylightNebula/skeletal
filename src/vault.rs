@@ -6,7 +6,7 @@ use cell::{App, Graphics, Plugin};
 use derive_more::{Deref, DerefMut};
 use gltf::Gltf;
 use mutual::{CowData, DashMap, RefCowData};
-use gearbox::{AssetContent, AssetVault, Handle, MeshAssetVault};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Handle, HotSwapMaterial, MeshAssetVault, glam::Vec4};
 
 use crate::{SkeletalMesh, SkeletalMeshHandle, loader};
 
@@ -50,7 +50,11 @@ impl SkeletalMeshVault {
 
     pub fn load_raw(&self, hash: u64, asset: SkeletalMesh) -> SkeletalMeshHandle {
         let handle = Handle::new((hash, Arc::clone(&self.0)));
-        let handle = SkeletalMeshHandle::new(handle);
+        // let material: HotSwapMaterial = CowData::new(Box::new(asset.material.unwrap_or(|| BasicMaterial::new(Vec4::ONE))));
+        let material: HotSwapMaterial = 
+            if let Some(mat) = &asset.material { CowData::new(Box::new(mat.clone())) }
+            else { CowData::new(Box::new(BasicMaterial::new(Vec4::ONE))) };
+        let handle = SkeletalMeshHandle::new(handle, material);
         self.mesh.insert(hash, (handle.clone(), CowData::new(asset)));
         return handle;
     }
@@ -87,7 +91,8 @@ impl AssetVault for SkeletalMeshVault {
 
         // create new handle and store inprogress
         let handle = Handle::new((hash, Arc::clone(&self.0)));
-        let handle = SkeletalMeshHandle::new(handle);
+        let material: HotSwapMaterial = CowData::new(Box::new(BasicMaterial::new(Vec4::ONE)));
+        let handle = SkeletalMeshHandle::new(handle, material);
         self.preload.insert(hash, handle.clone());
 
         // start load
@@ -123,7 +128,8 @@ impl AssetVault for SkeletalMeshVault {
 pub fn load_inprogress(
     graphics: Res<Graphics>,
     vault: Res<SkeletalMeshVault>,
-    meshes: Res<MeshAssetVault>
+    meshes: Res<MeshAssetVault>,
+    textures: Res<BindlessArrayTextureVault>
 ) {
     // take copy of all hashes in the inprogress maps
     let inprogress_gltf_hashes = vault.inprogress_gltf.iter()
@@ -140,7 +146,10 @@ pub fn load_inprogress(
                 else { continue };
             let handle = content.0.clone();
             let gltf = &content.1;
-            let (mesh, _animations) = loader::gltf::load(gltf, &graphics, &meshes, &PathBuf::new(), &PathBuf::new(), None, hash);
+            let (mesh, _animations) = loader::gltf::load(gltf, &graphics, &meshes, &textures, &PathBuf::new(), &PathBuf::new(), None, hash);
+            if let Some(material) = mesh.material.as_ref() {
+                handle.material().set(Box::new(material.clone()));
+            }
             vault.mesh.insert(hash, (handle, CowData::new(mesh)));
         }
         
@@ -154,7 +163,10 @@ pub fn load_inprogress(
                 else { continue };
             let handle = content.0.clone();
             let fbx = &content.1;
-            let (mesh, _animations) = loader::fbx::load(&graphics, &fbx, &meshes, None, None, hash);
+            let (mesh, _animations) = loader::fbx::load(&graphics, &fbx, &meshes, &textures, None, None, hash);
+            if let Some(material) = mesh.material.as_ref() {
+                handle.material().set(Box::new(material.clone()));
+            }
             vault.mesh.insert(hash, (handle, CowData::new(mesh)));
         }
         

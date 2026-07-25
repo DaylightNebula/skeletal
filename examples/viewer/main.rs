@@ -1,5 +1,3 @@
-use std::fs::File;
-use std::io::BufReader;
 use std::path::PathBuf;
 
 use anarchy::macros::{Resource, system};
@@ -7,11 +5,10 @@ use anarchy::anyhow::{self, bail};
 use anarchy::{EntityBuilder, Query, Res, ResMut, WorldDatabase};
 use cell::{EguiPlugin, Graphics};
 use cell::{App, EguiCtx, egui::egui};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, MaterialRef, MeshAssetVault, MeshRef, SimpleTexturedMaterial, glam::*};
+use gearbox::{AssetContent, AssetVault, BindlessArrayTextureVault, MaterialRef, MeshAssetVault, MeshRef, glam::*};
 use gearbox::{Camera, GearboxRenderPlugin, Transform};
-use gltf::Gltf;
 use skeletal::anim::Animator;
-use skeletal::{SkeletalMesh, loader};
+use skeletal::{SkeletalMesh, SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
 
 #[derive(Debug, Resource)]
 pub struct ViewerData {
@@ -21,6 +18,7 @@ pub struct ViewerData {
 fn main() -> anyhow::Result<()> {
     App::new()
         .add_plugin(GearboxRenderPlugin)
+        .add_plugin(SkeletalMeshPlugin)
         .add_plugin(EguiPlugin)
         .on_render_startup(setup)
         .on_render_update(update)
@@ -31,7 +29,7 @@ fn main() -> anyhow::Result<()> {
 #[system]
 fn setup(
     graphics: Res<Graphics>,
-    meshes: Res<MeshAssetVault>,
+    meshes: Res<SkeletalMeshVault>,
     textures: Res<BindlessArrayTextureVault>
 ) {
     world.insert(
@@ -42,26 +40,19 @@ fn setup(
     );
     
     let Some(path) = get_path() else { bail!("No path provided") };
-    let file = File::open(&path)?;
-    let gltf = Gltf::from_reader(BufReader::new(file))?;
-    let (model, animations) = loader::gltf::load(gltf, &*graphics, &meshes, &path, &path, None);
+    let mesh = meshes.load(AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)?;
+    let material = MaterialRef::new(mesh.material().clone());
+    let animator = Animator::empty();
 
-    let material = model.material().as_ref()
-        .and_then(|std_mat| std_mat.albedo_texture.as_ref())
-        .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
-        .map(|handle| SimpleTexturedMaterial::new(handle))
-        .map(|textured_mat| MaterialRef::new(textured_mat))
-        .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
-
-    let mut animator = Animator::new(&model, &animations);
-    animator.play("2H_Melee_Attack_Spin", true);
+    // let mut animator = Animator::new(&model, &animations);
+    // animator.play("2H_Melee_Attack_Spin", true);
 
     world.insert(
         EntityBuilder::default()
             .add(Transform::new(Vec3::new(0.0, -1.0, 0.0), Quat::IDENTITY, Vec3::ONE * 3.0))
             .add(material)
             .add(animator)
-            .add(MeshRef::new(model))
+            .add(MeshRef::new(mesh))
             .build()
     );
 }
@@ -75,19 +66,19 @@ fn update(
     data: ResMut<ViewerData>
 ) {
     egui::Window::new("Animations").show(&egui.context, |ui| {
-        if ui.button("Add animations...").clicked() {
-            let Some(path) = rfd::FileDialog::new()
-                .set_title("Select a GLTF/GLB file")
-                .pick_file() else { return };
-            let file = File::open(&path).unwrap();
-            let gltf = Gltf::from_reader(BufReader::new(file)).unwrap();
-            let (_model, animations) = loader::gltf::load(gltf, &*graphics, &meshes, &path, &path, None);
+        // if ui.button("Add animations...").clicked() {
+        //     let Some(path) = rfd::FileDialog::new()
+        //         .set_title("Select a GLTF/GLB file")
+        //         .pick_file() else { return };
+        //     let file = File::open(&path).unwrap();
+        //     let gltf = Gltf::from_reader(BufReader::new(file)).unwrap();
+        //     let (_model, animations) = loader::gltf::load(gltf, &*graphics, &meshes, &path, &path, None);
         
-            for (mut animator, mut mesh) in query.as_iter() {
-                let Some(mesh) = mesh.0.as_any_mut().downcast_mut::<SkeletalMesh>() else { continue };
-                animator.add_preprocessed_animations(mesh, animations.clone().into_iter());
-            }
-        }
+        //     for (mut animator, mut mesh) in query.as_iter() {
+        //         let Some(mesh) = mesh.0.as_any_mut().downcast_mut::<SkeletalMesh>() else { continue };
+        //         animator.add_preprocessed_animations(mesh, animations.clone().into_iter());
+        //     }
+        // }
 
         for (mut animator, _) in query.as_iter() {
             let animations = animator.animations()

@@ -1,5 +1,5 @@
 use anarchy::{ComponentMeta, Entity, World, anyhow::{self, Context, bail}, extract_comps_distributed, macros::{AsAny, Getters}};
-use gearbox::{AssetVault, Handle, Mesh, MeshAssetVault, Transform, glam::Mat4};
+use gearbox::{AssetVault, Handle, HotSwapMaterial, Mesh, MeshAssetVault, Transform, glam::Mat4};
 use magician_vgpu::{BindGroupProvider, BindableObject, Buffer, DrawSettings, ImmutableBuffer, MutableBuffer, Pipeline, PipelineBuilder, ShaderSource, ShaderType, SinglePass, VirtualGpu, WritableBuffer};
 use mutual::{CastableSharedData, CowData, MutCastGuard, RefCastGuard};
 use skeletal_shaders::{AnimationInfo, AnimationInfoInput};
@@ -41,14 +41,16 @@ impl Mesh for SkeletalRenderableMesh {
 #[derive(AsAny, Getters)]
 pub struct SkeletalMeshHandle {
     pub(crate) handle: Handle<SkeletalMesh>,
+    pub(crate) material: HotSwapMaterial,
     pub(crate) instance_buffer: CowData<MutableBuffer<[Mat4]>>,
     pub(crate) animation_buffers: CowData<SkeletalAnimationBuffers>
 }
 
 impl SkeletalMeshHandle {
-    pub fn new(handle: Handle<SkeletalMesh>) -> Self {
+    pub fn new(handle: Handle<SkeletalMesh>, material: HotSwapMaterial) -> Self {
         Self {
             handle,
+            material,
             instance_buffer: CowData::null(),
             animation_buffers: CowData::null()
         }
@@ -59,6 +61,7 @@ impl Clone for SkeletalMeshHandle {
     fn clone(&self) -> Self {
         Self {
             handle: self.handle.clone(),
+            material: self.material.clone(),
             instance_buffer: CowData::null(),
             animation_buffers: CowData::null()
         }

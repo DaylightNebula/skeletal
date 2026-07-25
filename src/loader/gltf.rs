@@ -2,7 +2,7 @@ use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
 use ahash::AHashMap;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use gearbox::{MeshAsset, MeshAssetVault};
+use gearbox::{AssetContent, AssetVault, BindlessArrayTextureType, BindlessArrayTextureVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 use gltf::Gltf;
 
@@ -15,6 +15,7 @@ pub fn load<'a>(
     gltf: &Gltf,
     vgpu: &VirtualGpu,
     mesh_vault: &MeshAssetVault,
+    texture_vault: &BindlessArrayTextureVault,
     asset_file: &PathBuf,
     source_file: &PathBuf,
     extra_buffer: Option<Cow<'_, [u8]>>,
@@ -58,7 +59,10 @@ pub fn load<'a>(
     let material = gltf
         .materials()
         .next()
-        .map(|material| unpack_material(textures, &material));
+        .map(|material| unpack_material(textures, &material))
+        .and_then(|material| material.albedo_texture)
+        .and_then(|material| texture_vault.load(AssetContent::Binary(material.into_boxed_slice()), BindlessArrayTextureType::PNG).ok())
+        .map(|handle| SimpleTexturedMaterial::new(handle));
 
     // load animations
     let animations = gltf

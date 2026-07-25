@@ -1,7 +1,7 @@
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::{App, Graphics};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform};
+use gearbox::{AssetContent, AssetVault, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
 use skeletal::{SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
@@ -28,20 +28,9 @@ fn startup_triangle(
             .build()
     );
 
-    // let path: PathBuf = "./examples/gltf/Characters.glb".into();
-    // println!("Loading path {:?} {:?}", std::env::current_dir(), std::fs::canonicalize(&path));
-    // let file = File::open(&path)?;
-    // let gltf = Gltf::from_reader(BufReader::new(file))?;
-    // let (model, animations) = loader::gltf::load(&gltf, &meshes, &path, &path, None);
-    let model = meshes.load(AssetContent::LocalPath("./examples/gltf/Barbarian.glb".to_string()), SkeletalMeshLoadType::GLTF)?;
-
-    // let material = model.material().as_ref()
-    //     .and_then(|std_mat| std_mat.albedo_texture.as_ref())
-    //     .and_then(|albedo_bytes| textures.load(AssetContent::Binary(albedo_bytes.clone().into_boxed_slice())).ok())
-    //     .map(|handle| SimpleTexturedMaterial::new(handle))
-    //     .map(|textured_mat| MaterialRef::new(textured_mat))
-    //     .unwrap_or_else(|| MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0))));
-    let material = MaterialRef::new(BasicMaterial::new(Vec4::new(0.8, 0.4, 0.2, 1.0)));
+    // load mesh and material
+    let mesh = meshes.load(AssetContent::LocalPath("./examples/gltf/Barbarian.glb".into()), SkeletalMeshLoadType::GLTF)?;
+    let material = MaterialRef::new(mesh.material().clone());
 
     let animator = Animator::empty();
     // animator.play("2H_Melee_Attack_Spin", true);
@@ -51,7 +40,7 @@ fn startup_triangle(
             .add(Transform::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE * 3.0))
             .add(material)
             .add(animator)
-            .add(MeshRef::new(model))
+            .add(MeshRef::new(mesh))
             .build()
     );
 }
