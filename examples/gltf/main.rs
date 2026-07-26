@@ -28,18 +28,16 @@ fn startup_triangle(
     );
 
     // load mesh and material
-    let mesh = meshes.load(world, AssetContent::LocalPath("./examples/gltf/Barbarian.glb".into()), SkeletalMeshLoadType::GLTF)?;
-    let material = MaterialRef::new(mesh.material().clone());
-
+    let (model, material) = meshes.load(world, AssetContent::LocalPath("./examples/gltf/Barbarian.glb".into()), SkeletalMeshLoadType::GLTF)?;
     let animator = Animator::empty();
     // animator.play("2H_Melee_Attack_Spin", true);
 
     world.insert(
         EntityBuilder::default()
             .add(Transform::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE * 3.0))
-            .add(material)
+            .add(MaterialRef::new(material))
             .add(animator)
-            .add(MeshRef::new(mesh))
+            .add(MeshRef::new(model))
             .build()
     );
 }

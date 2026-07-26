@@ -1,5 +1,5 @@
 use anarchy::{ComponentMeta, Entity, World, anyhow::{self, Context, bail}, extract_comps_distributed, macros::{AsAny, Getters}};
-use gearbox::{AssetVault, Handle, Material, Mesh, MeshAssetVault, Transform, glam::Mat4};
+use gearbox::{AssetVault, Handle, Mesh, MeshAssetVault, Transform, glam::Mat4};
 use magician_vgpu::{BindGroupProvider, BindableObject, Buffer, DrawSettings, ImmutableBuffer, MutableBuffer, Pipeline, PipelineBuilder, ShaderSource, ShaderType, SinglePass, VirtualGpu, WritableBuffer};
 use mutual::{CastableSharedData, CowData, DashSet, MutCastGuard, RefCastGuard};
 use skeletal_shaders::{AnimationInfo, AnimationInfoInput};
@@ -52,17 +52,15 @@ impl Mesh for SkeletalRenderableMesh {
 #[derive(AsAny, Getters)]
 pub struct SkeletalMeshHandle {
     pub(crate) handle: Handle<SkeletalMesh>,
-    pub(crate) material: Handle<Box<dyn Material>>,
     pub(crate) instance_buffer: CowData<MutableBuffer<[Mat4]>>,
     pub(crate) animation_buffers: CowData<SkeletalAnimationBuffers>,
     pub(crate) invisible_bones: DashSet<String>
 }
 
 impl SkeletalMeshHandle {
-    pub fn new(handle: Handle<SkeletalMesh>, material: Handle<Box<dyn Material>>) -> Self {
+    pub fn new(handle: Handle<SkeletalMesh>) -> Self {
         Self {
             handle,
-            material,
             instance_buffer: CowData::null(),
             animation_buffers: CowData::null(),
             invisible_bones: DashSet::new()
@@ -74,7 +72,6 @@ impl Clone for SkeletalMeshHandle {
     fn clone(&self) -> Self {
         Self {
             handle: self.handle.clone(),
-            material: self.material.clone(),
             instance_buffer: CowData::null(),
             animation_buffers: CowData::null(),
             invisible_bones: DashSet::new()

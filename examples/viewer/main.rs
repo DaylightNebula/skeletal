@@ -40,8 +40,7 @@ fn setup(
     );
     
     let Some(path) = get_path() else { bail!("No path provided") };
-    let mesh = meshes.load(world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)?;
-    let material = MaterialRef::new(mesh.material().clone());
+    let (model, material) = meshes.load(world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)?;
     let animator = Animator::empty();
 
     // let mut animator = Animator::new(&model, &animations);
@@ -50,9 +49,9 @@ fn setup(
     world.insert(
         EntityBuilder::default()
             .add(Transform::new(Vec3::new(0.0, -1.0, 0.0), Quat::IDENTITY, Vec3::ONE * 3.0))
-            .add(material)
+            .add(MaterialRef::new(material))
             .add(animator)
-            .add(MeshRef::new(mesh))
+            .add(MeshRef::new(model))
             .build()
     );
 }

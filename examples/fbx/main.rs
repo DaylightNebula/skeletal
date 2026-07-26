@@ -28,7 +28,7 @@ fn startup_triangle(
     );
 
     for z in -1 .. 2 {
-        let model = meshes.load(world, AssetContent::LocalPath("./examples/fbx/SK_Character_Alien_Male_01.fbx".into()), SkeletalMeshLoadType::FBX)?;
+        let (model, _) = meshes.load(world, AssetContent::LocalPath("./examples/fbx/SK_Character_Alien_Male_01.fbx".into()), SkeletalMeshLoadType::FBX)?;
         let texture = textures.load(world, AssetContent::LocalPath("./examples/fbx/PolygonSciFiCity_Texture_01_A.png".into()), BindlessArrayTextureType::PNG)?;
         let material = MaterialRef::new(SimpleTexturedMaterial::new(texture));
         let animator = Animator::empty();
