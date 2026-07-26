@@ -8,7 +8,7 @@ use gltf::Gltf;
 use mutual::{CowData, DashMap, RefCowData};
 use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Handle, LazyAssetVault, LoadableAssetVault, Material, MaterialVault, MeshAssetVault, glam::Vec4};
 
-use crate::{SkeletalMesh, SkeletalMeshHandle, loader};
+use crate::{AnimationSet, AnimationVault, SkeletalMesh, SkeletalMeshHandle, loader};
 
 /// Registers the `SkeletalMeshVault` resource and the render-schedule system
 /// that finishes loading meshes queued by it. Required for `SkeletalMeshVault::load`
@@ -42,10 +42,10 @@ pub struct SkeletalMeshVault(Arc<SkeletalMeshVaultInner>);
 /// cache queried by `get`/`has`. A hash only ever lives in one map at a time.
 #[derive(Default)]
 pub struct SkeletalMeshVaultInner {
-    pub mesh: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>), CowData<SkeletalMesh>)>,
-    pub preload: DashMap<u64, (SkeletalMeshHandle, Handle<Box<dyn Material>>)>,
-    pub inprogress_gltf: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>), Gltf)>,
-    pub inprogress_fbx: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>), ufbx::SceneRoot)>
+    pub mesh: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>), CowData<SkeletalMesh>)>,
+    pub preload: DashMap<u64, (SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>)>,
+    pub inprogress_gltf: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>), Gltf)>,
+    pub inprogress_fbx: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>), ufbx::SceneRoot)>
 }
 
 unsafe impl Send for SkeletalMeshVaultInner {}
@@ -80,8 +80,11 @@ impl SkeletalMeshVault {
 impl SkeletalMeshVaultInner {
     /// Drop a fully-loaded mesh from the cache. Called by `SkeletalMesh::unload`
     /// once its handle's reference count drops to the unload threshold.
-    pub fn remove(&self, hash: u64) -> Option<(u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>), CowData<SkeletalMesh>))> {
-        self.mesh.remove(&hash)
+    pub fn remove(&self, hash: u64) {
+        self.preload.remove(&hash);
+        self.inprogress_fbx.remove(&hash);
+        self.inprogress_gltf.remove(&hash);
+        self.mesh.remove(&hash);
     }
 }
 
@@ -97,7 +100,7 @@ impl AssetVault for SkeletalMeshVault {
 
 impl LoadableAssetVault for SkeletalMeshVault {
     type LoadType = SkeletalMeshLoadType;
-    type LoadResult = (SkeletalMeshHandle, Handle<Box<dyn Material>>);
+    type LoadResult = (SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>);
 
     /// Queue `content` for loading as `ty` and return a handle immediately.
     /// Hashes `content` first and, if a handle already exists for that hash
@@ -110,6 +113,8 @@ impl LoadableAssetVault for SkeletalMeshVault {
     fn load(&self, world: &World, content: AssetContent, ty: SkeletalMeshLoadType) -> anarchy::anyhow::Result<Self::LoadResult> {
         let mat_vault = world.get_resource_ref::<MaterialVault>()
             .context("Missing material vault")?;
+        let anim_vault = world.get_resource_ref::<AnimationVault>()
+            .context("Missing animation vault")?;
 
         // get content hash
         let mut hasher = AHasher::default();
@@ -125,12 +130,13 @@ impl LoadableAssetVault for SkeletalMeshVault {
         // create new handle and store inprogress
         let handle: Handle<SkeletalMesh> = Handle::new((hash, Arc::clone(&self.0)));
         let material: Handle<Box<dyn Material + 'static>> = mat_vault.allocate(handle.inner().0)?;
+        let animations: Handle<AnimationSet> = anim_vault.allocate(handle.inner().0)?;
         let handle = SkeletalMeshHandle::new(handle);
-        self.preload.insert(hash, (handle.clone(), material.clone()));
+        self.preload.insert(hash, (handle.clone(), material.clone(), animations.clone()));
 
         // start load
         let inner = Arc::clone(&self.0);
-        let handle2 = (handle.clone(), material.clone());
+        let handle2 = (handle.clone(), material.clone(), animations.clone());
         Scheduler::run_async(async move {
             let bytes = content.into_bytes()
                 .await
@@ -153,7 +159,7 @@ impl LoadableAssetVault for SkeletalMeshVault {
             inner.preload.remove(&hash);
         });
 
-        Ok((handle, material))
+        Ok((handle, material, animations))
     }
 }
 
@@ -169,7 +175,8 @@ pub fn load_inprogress(
     vault: Res<SkeletalMeshVault>,
     meshes: Res<MeshAssetVault>,
     textures: Res<BindlessArrayTextureVault>,
-    materials: Res<MaterialVault>
+    materials: Res<MaterialVault>,
+    animations: Res<AnimationVault>
 ) {
     // take copy of all hashes in the inprogress maps
     let inprogress_gltf_hashes = vault.inprogress_gltf.iter()
@@ -189,13 +196,16 @@ pub fn load_inprogress(
 
             // load gltf
             let gltf = &content.1;
-            let (mesh, _animations) = loader::gltf::load(gltf, &world, &graphics, &meshes, &textures, &PathBuf::new(), &PathBuf::new(), None, hash);
+            let (mesh, anims) = loader::gltf::load(gltf, &world, &graphics, &meshes, &textures, &PathBuf::new(), &PathBuf::new(), None, hash);
 
             // save material
             let material: Box<dyn Material> = mesh.material().clone()
                 .map::<Box<dyn Material>, _>(|a| Box::new(a))
                 .unwrap_or_else(|| Box::new(BasicMaterial::new(Vec4::ONE)));
             materials.store(world, handle.1.clone(), material);
+
+            // save animations
+            animations.store(world, handle.2.clone(), AnimationSet(anims));
 
             // save mesh
             vault.mesh.insert(hash, (handle, CowData::new(mesh)));
@@ -214,13 +224,16 @@ pub fn load_inprogress(
 
             // load fbx
             let fbx = &content.1;
-            let (mesh, _animations) = loader::fbx::load(&fbx, &world, &graphics, &meshes, &textures, None, None, hash);
+            let (mesh, anims) = loader::fbx::load(&fbx, &world, &graphics, &meshes, &textures, None, None, hash);
 
             // save material
             let material: Box<dyn Material> = mesh.material().clone()
                 .map::<Box<dyn Material>, _>(|a| Box::new(a))
                 .unwrap_or_else(|| Box::new(BasicMaterial::new(Vec4::ONE)));
             materials.store(world, handle.1.clone(), material);
+
+            // save animations
+            animations.store(world, handle.2.clone(), AnimationSet(anims));
 
             // save mesh
             vault.mesh.insert(hash, (handle, CowData::new(mesh)));

@@ -1,18 +1,23 @@
-use std::f32::consts::PI;
+use std::{collections::LinkedList, f32::consts::PI};
 
 use ahash::AHashMap;
 use anarchy::macros::{Component, Getters};
 use chrono::{DateTime, Utc};
-use gearbox::Transform;
+use gearbox::{AssetVault, Handle, Transform};
 use magician_vgpu::glam::{Mat4, Quat, Vec3};
 
 use crate::{data::{Animation, Interpolation, ModelBone, PreProcessAnimation}, model::SkeletalMesh};
+
+pub mod vault;
+
+pub use vault::*;
 
 /// A basic animator that allows for low level control of the current animation
 /// state of a `SkeletalMesh` or anything else that uses this `Animator`.
 #[derive(Getters, Component)]
 pub struct Animator {
     animations: AHashMap<String, Animation>,
+    load_queue: LinkedList<Handle<AnimationSet>>,
     state: Option<AnimatorState>
 }
 
@@ -31,6 +36,7 @@ impl Animator {
     ) -> Self {
         Self {
             animations,
+            load_queue: LinkedList::new(),
             state
         }
     }
@@ -39,6 +45,7 @@ impl Animator {
     pub fn empty() -> Self {
         Self {
             animations: AHashMap::default(),
+            load_queue: LinkedList::new(),
             state: None
         }
     }
@@ -57,8 +64,18 @@ impl Animator {
 
         Self {
             animations,
+            load_queue: LinkedList::new(),
             state: None
         }
+    }
+
+    /// Queue an animation set to be added to this animator.  If an animation from this set is played
+    /// before the animation is loaded, no animation will play until it is loaded.
+    pub fn load_animations(
+        &mut self,
+        handle: Handle<AnimationSet>
+    ) {
+        self.load_queue.push_back(handle);
     }
 
     /// Add an animation to this `Animator`.
@@ -123,6 +140,26 @@ impl Animator {
     /// Stop any active animations in this `Animator`.
     pub fn stop(&mut self) {
         self.state = None;
+    }
+
+    /// Internal function to drain and load the animation `load_queue`.  `AnimationSet` handles may
+    /// be added back to the `load_queue` if the animations where not loaded into the vault yet.
+    pub(crate) fn exec_anim_queue(&mut self, vault: &AnimationVault, parent: &SkeletalMesh) {
+        // drain and load all queued animation handles
+        let anim_handles = self.load_queue.clone();
+        self.load_queue.clear();
+        for handle in anim_handles.into_iter() {
+            // get animations, add back to load queue on fail (implied not loaded yet)
+            let Some(animations) = vault.get(&handle) else {
+                self.load_queue.push_back(handle);
+                continue;
+            };
+
+            for (anim_id, anim) in animations.iter() {
+                let anim = Animation::from_preprocessed_animation(&anim, parent.node_id_map(), true);
+                self.animations.insert(anim_id.clone(), anim);
+            }
+        }
     }
 
     /// Internal function for calculation the transform matrices of each `ModelBone`

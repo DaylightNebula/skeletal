@@ -20,5 +20,6 @@ pub struct SkeletalMeshPlugin;
 impl Plugin for SkeletalMeshPlugin {
     fn build(self, app: App) -> App {
         app.add_plugin(SkeletalMeshVaultPlugin)
+            .add_resource(AnimationVault::default())
     }
 }

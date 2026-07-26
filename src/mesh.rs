@@ -5,7 +5,7 @@ use mutual::{CastableSharedData, CowData, DashSet, MutCastGuard, RefCastGuard};
 use skeletal_shaders::{AnimationInfo, AnimationInfoInput};
 use wgpu::ShaderStages;
 
-use crate::{Animator, ModelBone, SkeletalAnimationBuffers, SkeletalMesh, SkeletalMeshVault, SkeletalMeshVertex, instance_buffer_layout, vertex_buffer_layout};
+use crate::{AnimationVault, Animator, ModelBone, SkeletalAnimationBuffers, SkeletalMesh, SkeletalMeshVault, SkeletalMeshVertex, instance_buffer_layout, vertex_buffer_layout};
 
 /// The GPU vertex/index buffers for a single sub-mesh of a `SkeletalMesh`.
 /// Its `create_pipeline` panics because it is only ever drawn through
@@ -112,7 +112,9 @@ impl Mesh for SkeletalMeshHandle {
         let mesh = skvault.get(self)
             .context("Failed to get mesh")?;
 
-        let Some(vault) = world.get_resource_ref::<MeshAssetVault>()
+        let Some(mesh_vault) = world.get_resource_ref::<MeshAssetVault>()
+            else { bail!("Missing mesh vault") };
+        let Some(anim_vault) = world.get_resource_ref::<AnimationVault>()
             else { bail!("Missing mesh vault") };
 
         // extract transform and mesh components
@@ -149,6 +151,9 @@ impl Mesh for SkeletalMeshHandle {
 
         // setup instances buffer (same for all bones, animations are handled through bones_bindable)
         pass.bind_instances(&*self.instance_buffer.get_ref());
+
+        // execute animators animation queue before rendering
+        animator.exec_anim_queue(&anim_vault, &mesh);
 
         // render each bone
         for bone in &mesh.bones {
@@ -203,7 +208,7 @@ impl Mesh for SkeletalMeshHandle {
 
             recr_bone(
                 vgpu,
-                &vault,
+                &mesh_vault,
                 pass,
                 world,
                 entity,

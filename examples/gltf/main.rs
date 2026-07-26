@@ -28,9 +28,10 @@ fn startup_triangle(
     );
 
     // load mesh and material
-    let (model, material) = meshes.load(world, AssetContent::LocalPath("./examples/gltf/Barbarian.glb".into()), SkeletalMeshLoadType::GLTF)?;
-    let animator = Animator::empty();
-    // animator.play("2H_Melee_Attack_Spin", true);
+    let (model, material, animations) = meshes.load(world, AssetContent::LocalPath("./examples/gltf/Barbarian.glb".into()), SkeletalMeshLoadType::GLTF)?;
+    let mut animator = Animator::empty();
+    animator.load_animations(animations);
+    animator.play("2H_Melee_Attack_Spin", true);
 
     world.insert(
         EntityBuilder::default()

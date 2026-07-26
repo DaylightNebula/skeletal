@@ -10,8 +10,9 @@ use gearbox::{Camera, GearboxRenderPlugin, Transform};
 use skeletal::anim::Animator;
 use skeletal::{SkeletalMeshHandle, SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
 
-#[derive(Debug, Resource)]
+#[derive(Resource)]
 pub struct ViewerData {
+    pub anim_mesh_handle_storage: Vec<SkeletalMeshHandle>,
     pub loop_animations: bool
 }
 
@@ -22,7 +23,7 @@ fn main() -> anyhow::Result<()> {
         .add_plugin(EguiPlugin)
         .on_render_startup(setup)
         .on_render_update(update)
-        .add_resource(ViewerData { loop_animations: true })
+        .add_resource(ViewerData { anim_mesh_handle_storage: vec![], loop_animations: true })
         .run()
 }
 
@@ -40,11 +41,9 @@ fn setup(
     );
     
     let Some(path) = get_path() else { bail!("No path provided") };
-    let (model, material) = meshes.load(world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)?;
-    let animator = Animator::empty();
-
-    // let mut animator = Animator::new(&model, &animations);
-    // animator.play("2H_Melee_Attack_Spin", true);
+    let (model, material, anims) = meshes.load(world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)?;
+    let mut animator = Animator::empty();
+    animator.load_animations(anims);
 
     world.insert(
         EntityBuilder::default()
@@ -66,19 +65,18 @@ fn update(
     data: ResMut<ViewerData>
 ) {
     egui::Window::new("Animations").show(&egui.context, |ui| {
-        // if ui.button("Add animations...").clicked() {
-        //     let Some(path) = rfd::FileDialog::new()
-        //         .set_title("Select a GLTF/GLB file")
-        //         .pick_file() else { return };
-        //     let file = File::open(&path).unwrap();
-        //     let gltf = Gltf::from_reader(BufReader::new(file)).unwrap();
-        //     let (_model, animations) = loader::gltf::load(gltf, &*graphics, &meshes, &path, &path, None);
-        
-        //     for (mut animator, mut mesh) in query.as_iter() {
-        //         let Some(mesh) = mesh.0.as_any_mut().downcast_mut::<SkeletalMesh>() else { continue };
-        //         animator.add_preprocessed_animations(mesh, animations.clone().into_iter());
-        //     }
-        // }
+        if ui.button("Add animations...").clicked() {
+            let Some(path) = rfd::FileDialog::new()
+                .set_title("Select a GLTF/GLB file")
+                .pick_file() else { return };
+
+            let Ok((mesh, _, anims)) = skvault.load(world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)
+                else { return };
+            data.anim_mesh_handle_storage.push(mesh);
+            for (mut animator, _) in query.as_iter() {
+                animator.load_animations(anims.clone());
+            }
+        }
 
         for (mut animator, _) in query.as_iter() {
             let animations = animator.animations()

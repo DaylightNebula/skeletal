@@ -28,11 +28,11 @@ fn startup_triangle(
     );
 
     for z in -1 .. 2 {
-        let (model, _) = meshes.load(world, AssetContent::LocalPath("./examples/fbx/SK_Character_Alien_Male_01.fbx".into()), SkeletalMeshLoadType::FBX)?;
+        let (model, _, anims) = meshes.load(world, AssetContent::LocalPath("./examples/fbx/SK_Character_Alien_Male_01.fbx".into()), SkeletalMeshLoadType::FBX)?;
         let texture = textures.load(world, AssetContent::LocalPath("./examples/fbx/PolygonSciFiCity_Texture_01_A.png".into()), BindlessArrayTextureType::PNG)?;
         let material = MaterialRef::new(SimpleTexturedMaterial::new(texture));
-        let animator = Animator::empty();
-        // animator.play("2H_Melee_Attack_Spin", true);
+        let mut animator = Animator::empty();
+        animator.load_animations(anims);
 
         world.insert(
             EntityBuilder::default()
