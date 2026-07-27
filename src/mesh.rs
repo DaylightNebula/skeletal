@@ -19,9 +19,10 @@ pub struct SkeletalRenderableMesh {
 
 impl Mesh for SkeletalRenderableMesh {
     fn create_pipeline<'a>(
-        &'a self,
-        _vgpu: &VirtualGpu
-    ) -> PipelineBuilder<'a>
+        &self,
+        _vgpu: &VirtualGpu,
+        _world: &World
+    ) -> anyhow::Result<PipelineBuilder<'a>>
     {
         panic!("Building pipeline from skeletal sub mesh")
     }
@@ -81,21 +82,24 @@ impl Clone for SkeletalMeshHandle {
 
 impl Mesh for SkeletalMeshHandle {
     fn create_pipeline<'a>(
-        &'a self,
-        vgpu: &VirtualGpu
-    ) -> PipelineBuilder<'a> {
-        Pipeline::builder("Skeletal Vertex Shader")
-            .source(
-                ShaderType::Vertex, 
-                ShaderSource {
-                    source: skeletal_shaders::SHADER_skeletal_vertex_main.into(),
-                    main_function: "skeletal_vertex_main".into()
-                }
-            )
-            .vertex(vertex_buffer_layout())
-            .vertex(instance_buffer_layout())
-            .layout_raw::<gearbox::shaders::common::CameraInput>(2, gearbox::shaders::common::CameraInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
-            .layout_raw::<skeletal_shaders::AnimationInfoInput>(3, skeletal_shaders::AnimationInfoInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
+        &self,
+        vgpu: &VirtualGpu,
+        _world: &World
+    ) -> anyhow::Result<PipelineBuilder<'a>> {
+        Ok(
+            Pipeline::builder("Skeletal Vertex Shader")
+                .source(
+                    ShaderType::Vertex, 
+                    ShaderSource {
+                        source: skeletal_shaders::SHADER_skeletal_vertex_main.into(),
+                        main_function: "skeletal_vertex_main".into()
+                    }
+                )
+                .vertex(vertex_buffer_layout())
+                .vertex(instance_buffer_layout())
+                .layout_raw::<gearbox::shaders::common::CameraInput>(2, gearbox::shaders::common::CameraInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
+                .layout_raw::<skeletal_shaders::AnimationInfoInput>(3, skeletal_shaders::AnimationInfoInput::layout(vgpu, ShaderStages::VERTEX_FRAGMENT))
+        )
     }
 
     fn draw(
