@@ -2,5 +2,7 @@
 //! same engine-native `SkeletalMesh` + animation data, so callers don't need to
 //! care which format a model came from.
 
-pub mod fbx;
 pub mod gltf;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod fbx;

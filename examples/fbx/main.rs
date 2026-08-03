@@ -1,11 +1,14 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
 use anarchy::macros::system;
 use cell::App;
-use gearbox::{AssetContent, BindlessArrayTextureType, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, LoadableAssetVault, MaterialRef, MeshRef, SimpleTexturedMaterial, Transform};
+use gearbox::{AssetContent, TextureType, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, LoadableAssetVault, MaterialRef, MeshRef, SimpleTexturedMaterial, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
 use skeletal::{SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> anyhow::Result<()> {
     App::new()
         .add_plugin(GearboxRenderPlugin)
@@ -29,7 +32,7 @@ fn startup_triangle(
 
     for z in -1 .. 2 {
         let (model, _, anims) = meshes.load(world, AssetContent::LocalPath("./examples/fbx/SK_Character_Alien_Male_01.fbx".into()), SkeletalMeshLoadType::FBX)?;
-        let texture = textures.load(world, AssetContent::LocalPath("./examples/fbx/PolygonSciFiCity_Texture_01_A.png".into()), BindlessArrayTextureType::PNG)?;
+        let texture = textures.load(world, AssetContent::LocalPath("./examples/fbx/PolygonSciFiCity_Texture_01_A.png".into()), TextureType::PNG)?;
         let material = MaterialRef::new(SimpleTexturedMaterial::new(texture));
         let mut animator = Animator::empty();
         animator.load_animations(anims);

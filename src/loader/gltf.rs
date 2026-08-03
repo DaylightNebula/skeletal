@@ -1,9 +1,10 @@
 use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
 use ahash::AHashMap;
-use anarchy::World;
+use anarchy::{World, anyhow};
 use base64::{Engine, prelude::BASE64_STANDARD};
-use gearbox::{AssetContent, BindlessArrayTextureType, BindlessArrayTextureVault, LoadableAssetVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
+use cell::Graphics;
+use gearbox::{AssetContent, BindlessArrayTextureVault, LoadableAssetVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial, TextureType, TextureVault};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 use gltf::Gltf;
 
@@ -17,17 +18,18 @@ const PNG_STREAM: &str = "data:image/png;base64,";
 pub fn load<'a>(
     gltf: &Gltf,
     world: &World,
-    vgpu: &VirtualGpu,
+    vgpu: &Graphics,
     mesh_vault: &MeshAssetVault,
-    texture_vault: &BindlessArrayTextureVault,
     asset_file: &PathBuf,
     source_file: &PathBuf,
     extra_buffer: Option<Cow<'_, [u8]>>,
     hash: u64
-) -> (SkeletalMesh, AHashMap<String, PreProcessAnimation>) {
+) -> anyhow::Result<(SkeletalMesh, AHashMap<String, PreProcessAnimation>)> {
     let mut node_id_map: AHashMap<String, usize> = AHashMap::new();
     let mut nodes: Vec<ModelBone> = Vec::new();
     let mut meshes = AHashMap::new();
+
+    let texture_vault = TextureVault::current(world, vgpu)?;
 
     // get filename and parent folder
     let mut out_folder_path = asset_file.clone();
@@ -65,7 +67,7 @@ pub fn load<'a>(
         .next()
         .map(|material| unpack_material(textures, &material))
         .and_then(|material| material.albedo_texture)
-        .and_then(|material| texture_vault.load(world, AssetContent::Binary(material.into_boxed_slice()), BindlessArrayTextureType::PNG).ok())
+        .and_then(|material| texture_vault.load(world, AssetContent::Binary(material.into_boxed_slice()), TextureType::PNG).ok())
         .map(|handle| SimpleTexturedMaterial::new(handle));
 
     // load animations
@@ -93,13 +95,13 @@ pub fn load<'a>(
         joints.zip(ibp).collect::<Vec<_>>()
     });
 
-    (
+    Ok((
         SkeletalMesh { 
             bones: nodes, node_id_map, 
             skin, meshes, material
         },
         animations
-    )
+    ))
 }
 
 fn unpack_animation<'a>(

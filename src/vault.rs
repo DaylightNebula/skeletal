@@ -1,12 +1,12 @@
 use std::{hash::{Hash, Hasher}, path::PathBuf, sync::Arc};
 
 use ahash::AHasher;
-use anarchy::{Res, Scheduler, World, anyhow::{self, Context}, macros::{Resource, system}};
+use anarchy::{Res, Scheduler, World, anyhow::Context, macros::{Resource, system}};
 use cell::{App, Graphics, Plugin};
 use derive_more::{Deref, DerefMut};
 use gltf::Gltf;
 use mutual::{CowData, DashMap, RefCowData};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Handle, LazyAssetVault, LoadableAssetVault, Material, MaterialVault, MeshAssetVault, glam::Vec4};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Handle, LazyAssetVault, LoadableAssetVault, Material, MaterialVault, MeshAssetVault, TextureVault, glam::Vec4};
 
 use crate::{AnimationSet, AnimationVault, SkeletalMesh, SkeletalMeshHandle, loader};
 
@@ -25,6 +25,7 @@ impl Plugin for SkeletalMeshVaultPlugin {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SkeletalMeshLoadType {
     GLTF,
+    #[cfg(not(target_arch = "wasm32"))]
     FBX
 }
 
@@ -45,6 +46,7 @@ pub struct SkeletalMeshVaultInner {
     pub mesh: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>), CowData<SkeletalMesh>)>,
     pub preload: DashMap<u64, (SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>)>,
     pub inprogress_gltf: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>), Gltf)>,
+    #[cfg(not(target_arch = "wasm32"))]
     pub inprogress_fbx: DashMap<u64, ((SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>), ufbx::SceneRoot)>
 }
 
@@ -82,6 +84,7 @@ impl SkeletalMeshVaultInner {
     /// once its handle's reference count drops to the unload threshold.
     pub fn remove(&self, hash: u64) {
         self.preload.remove(&hash);
+        #[cfg(not(target_arch = "wasm32"))]
         self.inprogress_fbx.remove(&hash);
         self.inprogress_gltf.remove(&hash);
         self.mesh.remove(&hash);
@@ -124,6 +127,7 @@ impl LoadableAssetVault for SkeletalMeshVault {
         // attempt to find previous handle with the same hash and return that
         if let Some(handle) = self.mesh.get(&hash) { return Ok(handle.0.clone()); }
         if let Some(handle) = self.inprogress_gltf.get(&hash) { return Ok(handle.0.clone()); }
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(handle) = self.inprogress_fbx.get(&hash) { return Ok(handle.0.clone()); }
         if let Some(handle) = self.preload.get(&hash) { return Ok(handle.clone()); }
 
@@ -148,6 +152,8 @@ impl LoadableAssetVault for SkeletalMeshVault {
                         .expect("Failed to read gltf from bytes");
                     inner.inprogress_gltf.insert(hash, (handle2, gltf));
                 },
+
+                #[cfg(not(target_arch = "wasm32"))]
                 SkeletalMeshLoadType::FBX => {
                     let fbx = ufbx::load_memory(&bytes, loader::fbx::load_opts())
                         .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))
@@ -174,7 +180,6 @@ pub fn load_inprogress(
     graphics: Res<Graphics>,
     vault: Res<SkeletalMeshVault>,
     meshes: Res<MeshAssetVault>,
-    textures: Res<BindlessArrayTextureVault>,
     materials: Res<MaterialVault>,
     animations: Res<AnimationVault>
 ) {
@@ -182,6 +187,7 @@ pub fn load_inprogress(
     let inprogress_gltf_hashes = vault.inprogress_gltf.iter()
         .map(|a| *a.key())
         .collect::<Vec<_>>();
+    #[cfg(not(target_arch = "wasm32"))]
     let inprogress_fbx_hashes = vault.inprogress_fbx.iter()
         .map(|a| *a.key())
         .collect::<Vec<_>>();
@@ -196,7 +202,7 @@ pub fn load_inprogress(
 
             // load gltf
             let gltf = &content.1;
-            let (mesh, anims) = loader::gltf::load(gltf, &world, &graphics, &meshes, &textures, &PathBuf::new(), &PathBuf::new(), None, hash);
+            let (mesh, anims) = loader::gltf::load(gltf, &world, &graphics, &meshes, &PathBuf::new(), &PathBuf::new(), None, hash)?;
 
             // save material
             let material: Box<dyn Material> = mesh.material().clone()
@@ -215,6 +221,7 @@ pub fn load_inprogress(
     }
 
 
+    #[cfg(not(target_arch = "wasm32"))]
     for hash in inprogress_fbx_hashes.into_iter() {
         {
             // pull content
