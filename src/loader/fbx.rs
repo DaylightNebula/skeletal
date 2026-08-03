@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
-use anarchy::{World, macros::warn};
-use gearbox::{AssetContent, TextureType, BindlessArrayTextureVault, LoadableAssetVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
+use anarchy::{World, macros::warn, anyhow};
+use cell::Graphics;
+use gearbox::{AssetContent, TextureType, TextureVault, LoadableAssetVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 
 use crate::{SkeletalMesh, SkeletalMeshVertex, SkeletalRenderableMesh, SkeletalSubMesh, data::*};
@@ -18,15 +19,16 @@ pub type TextureResolver<'a> = dyn Fn(&str) -> Option<PathBuf> + 'a;
 pub fn load(
     scene: &ufbx::Scene,
     world: &World,
-    vgpu: &VirtualGpu,
+    vgpu: &Graphics,
     mesh_vault: &MeshAssetVault,
-    texture_vault: &BindlessArrayTextureVault,
     source_file: Option<&PathBuf>,
     texture_resolver: Option<&TextureResolver>,
     hash: u64
-) -> (SkeletalMesh, AHashMap<String, PreProcessAnimation>) {
+) -> anyhow::Result<(SkeletalMesh, AHashMap<String, PreProcessAnimation>)> {
     let mut node_id_map: AHashMap<String, usize> = AHashMap::new();
     let mut meshes = AHashMap::new();
+
+    let texture_vault = TextureVault::current(world, vgpu)?;
 
     // load nodes, skipping ufbx's synthetic scene root
     let nodes = scene
@@ -63,7 +65,7 @@ pub fn load(
             .collect::<Vec<_>>()
     });
 
-    (
+    Ok((
         SkeletalMesh {
             bones: nodes,
             node_id_map,
@@ -72,7 +74,7 @@ pub fn load(
             material
         },
         animations,
-    )
+    ))
 }
 
 fn unpack_node(

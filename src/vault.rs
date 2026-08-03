@@ -156,7 +156,7 @@ impl LoadableAssetVault for SkeletalMeshVault {
                 #[cfg(not(target_arch = "wasm32"))]
                 SkeletalMeshLoadType::FBX => {
                     let fbx = ufbx::load_memory(&bytes, loader::fbx::load_opts())
-                        .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))
+                        .map_err(|e| anarchy::anyhow::anyhow!("Failed to load fbx: {}", e.description))
                         .expect("Failed to load FBX");
                     inner.inprogress_fbx.insert(hash, (handle2, fbx));
                 },
@@ -231,7 +231,7 @@ pub fn load_inprogress(
 
             // load fbx
             let fbx = &content.1;
-            let (mesh, anims) = loader::fbx::load(&fbx, &world, &graphics, &meshes, &textures, None, None, hash);
+            let (mesh, anims) = loader::fbx::load(&fbx, &world, &graphics, &meshes, None, None, hash)?;
 
             // save material
             let material: Box<dyn Material> = mesh.material().clone()
