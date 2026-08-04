@@ -6,7 +6,7 @@ use cell::{App, Graphics, Plugin};
 use derive_more::{Deref, DerefMut};
 use gltf::Gltf;
 use mutual::{CowData, DashMap, RefCowData};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BindlessArrayTextureVault, Handle, LazyAssetVault, LoadableAssetVault, Material, MaterialVault, MeshAssetVault, TextureVault, glam::Vec4};
+use gearbox::{AssetContent, AssetVault, BasicMaterial, Handle, LazyAssetVault, LoadableAssetVault, Material, MaterialVault, MeshAssetVault, glam::Vec4};
 
 use crate::{AnimationSet, AnimationVault, SkeletalMesh, SkeletalMeshHandle, loader};
 

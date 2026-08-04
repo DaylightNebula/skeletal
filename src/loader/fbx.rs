@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use ahash::AHashMap;
 use anarchy::{World, macros::warn, anyhow};
 use cell::Graphics;
-use gearbox::{AssetContent, TextureType, TextureVault, LoadableAssetVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
+use gearbox::{AssetContent, TextureType, TextureVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 
 use crate::{SkeletalMesh, SkeletalMeshVertex, SkeletalRenderableMesh, SkeletalSubMesh, data::*};

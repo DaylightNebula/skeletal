@@ -4,7 +4,7 @@ use ahash::AHashMap;
 use anarchy::{World, anyhow};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use cell::Graphics;
-use gearbox::{AssetContent, BindlessArrayTextureVault, LoadableAssetVault, MeshAsset, MeshAssetVault, SimpleTexturedMaterial, TextureType, TextureVault};
+use gearbox::{AssetContent, MeshAsset, MeshAssetVault, SimpleTexturedMaterial, TextureType, TextureVault};
 use magician_vgpu::{ImmutableBuffer, VirtualGpu, glam::*};
 use gltf::Gltf;
 
