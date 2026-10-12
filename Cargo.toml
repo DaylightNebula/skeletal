@@ -7,7 +7,6 @@ edition = "2024"
 mutual = "1.0.2"
 skeletal_shaders = { path = "./shaders" }
 anarchy = { path = "../anarchy" }
-cell = { path = "../cell" }
 gearbox = { path = "../gearbox" }
 magician-vgpu = { path = "../shader_magician/magician-vgpu" }
 
@@ -20,6 +19,9 @@ base64 = "0.22.1"
 ahash = { version = "0.8.12", default-features = false, features = ["std", "compile-time-rng"] }
 wgpu = "29.0"
 derive_more = "2.1.1"
+anyhow = "1"
+getset = "0.1.7"
+log = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ufbx = "0.11.2"

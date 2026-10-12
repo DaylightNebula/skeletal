@@ -1,12 +1,12 @@
 use std::{hash::{Hash, Hasher}, path::PathBuf, sync::Arc};
 
 use ahash::AHasher;
-use anarchy::{Res, Scheduler, World, anyhow::Context, macros::{Resource, system}};
-use cell::{App, Graphics, Plugin};
+use anarchy::{Res, Resource, SystemPin, World, pin};
+use anyhow::Context;
 use derive_more::{Deref, DerefMut};
 use gltf::Gltf;
 use mutual::{CowData, DashMap, RefCowData};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, Handle, LazyAssetVault, LoadableAssetVault, Material, MaterialVault, MeshAssetVault, glam::Vec4};
+use gearbox::{App, AssetContent, AssetVault, BasicMaterial, Graphics, Handle, LazyAssetVault, LoadableAssetVault, Material, MaterialVault, MeshAssetVault, Plugin, glam::Vec4, run_async};
 
 use crate::{AnimationSet, AnimationVault, SkeletalMesh, SkeletalMeshHandle, loader};
 
@@ -17,7 +17,7 @@ pub struct SkeletalMeshVaultPlugin;
 impl Plugin for SkeletalMeshVaultPlugin {
     fn build(self, app: App) -> App {
         app.add_resource(SkeletalMeshVault::default())
-            .on_render_update(load_inprogress)
+            .on_render_update_with(load_inprogress, pin(SystemPin::End))
     }
 }
 
@@ -34,6 +34,12 @@ pub enum SkeletalMeshLoadType {
 /// same underlying cache.
 #[derive(Resource, Default, Deref, DerefMut)]
 pub struct SkeletalMeshVault(Arc<SkeletalMeshVaultInner>);
+
+impl std::fmt::Debug for SkeletalMeshVault {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SkeletalMeshVault").field("meshes", &self.mesh.len()).finish_non_exhaustive()
+    }
+}
 
 /// Tracks a mesh through its load pipeline, one map per stage: `preload` holds
 /// a handle while its file bytes are being read asynchronously; once read, the
@@ -113,10 +119,10 @@ impl LoadableAssetVault for SkeletalMeshVault {
     /// stashing the result in `inprogress_gltf`/`inprogress_fbx` for the
     /// `load_inprogress` render-schedule system to finish (uploading GPU
     /// resources requires the render thread, so that part can't happen here).
-    fn load(&self, world: &World, content: AssetContent, ty: SkeletalMeshLoadType) -> anarchy::anyhow::Result<Self::LoadResult> {
-        let mat_vault = world.get_resource_ref::<MaterialVault>()
+    fn load(&self, world: &World, content: AssetContent, ty: SkeletalMeshLoadType) -> anyhow::Result<Self::LoadResult> {
+        let mat_vault = world.resource::<MaterialVault>()
             .context("Missing material vault")?;
-        let anim_vault = world.get_resource_ref::<AnimationVault>()
+        let anim_vault = world.resource::<AnimationVault>()
             .context("Missing animation vault")?;
 
         // get content hash
@@ -141,7 +147,7 @@ impl LoadableAssetVault for SkeletalMeshVault {
         // start load
         let inner = Arc::clone(&self.0);
         let handle2 = (handle.clone(), material.clone(), animations.clone());
-        Scheduler::run_async(async move {
+        run_async(async move {
             let bytes = content.into_bytes()
                 .await
                 .expect("Failed to read skeletal mesh content");
@@ -156,7 +162,7 @@ impl LoadableAssetVault for SkeletalMeshVault {
                 #[cfg(not(target_arch = "wasm32"))]
                 SkeletalMeshLoadType::FBX => {
                     let fbx = ufbx::load_memory(&bytes, loader::fbx::load_opts())
-                        .map_err(|e| anarchy::anyhow::anyhow!("Failed to load fbx: {}", e.description))
+                        .map_err(|e| anyhow::anyhow!("Failed to load fbx: {}", e.description))
                         .expect("Failed to load FBX");
                     inner.inprogress_fbx.insert(hash, (handle2, fbx));
                 },
@@ -172,11 +178,11 @@ impl LoadableAssetVault for SkeletalMeshVault {
 /// Finishes loading every mesh currently sitting in `inprogress_gltf`/`inprogress_fbx`:
 /// turns each parsed scene into GPU resources (requires the render thread, hence
 /// this being a render-schedule system) and moves the result into the vault's
-/// `mesh` cache. Runs at `i32::MIN`, i.e. after every other render-schedule
-/// system this frame, so a mesh finished here becomes visible to the rest of
-/// the render schedule starting next frame.
-#[system(std::i32::MIN)]
+/// `mesh` cache. Pinned to the end of the render schedule, after every other render
+/// system this frame, so a mesh finished here becomes visible to the rest of the
+/// render schedule starting next frame. Meshes that fail to load are logged and dropped.
 pub fn load_inprogress(
+    world: World,
     graphics: Res<Graphics>,
     vault: Res<SkeletalMeshVault>,
     meshes: Res<MeshAssetVault>,
@@ -192,60 +198,38 @@ pub fn load_inprogress(
         .map(|a| *a.key())
         .collect::<Vec<_>>();
 
+    // saves a loaded mesh along with its material and animations
+    let finish = |hash: u64, handle: (SkeletalMeshHandle, Handle<Box<dyn Material>>, Handle<AnimationSet>), mesh: SkeletalMesh, anims| {
+        let material: Box<dyn Material> = mesh.material().clone()
+            .map::<Box<dyn Material>, _>(|a| Box::new(a))
+            .unwrap_or_else(|| Box::new(BasicMaterial::new(Vec4::ONE)));
+        materials.store(&world, handle.1.clone(), material);
+        animations.store(&world, handle.2.clone(), AnimationSet(anims));
+        vault.mesh.insert(hash, (handle, CowData::new(mesh)));
+    };
 
     for hash in inprogress_gltf_hashes.into_iter() {
-        {
-            // pull content
-            let Some(content) = vault.inprogress_gltf.get(&hash)
-                else { continue };
+        if let Some(content) = vault.inprogress_gltf.get(&hash) {
             let handle = content.0.clone();
-
-            // load gltf
-            let gltf = &content.1;
-            let (mesh, anims) = loader::gltf::load(gltf, &world, &graphics, &meshes, &PathBuf::new(), &PathBuf::new(), None, hash)?;
-
-            // save material
-            let material: Box<dyn Material> = mesh.material().clone()
-                .map::<Box<dyn Material>, _>(|a| Box::new(a))
-                .unwrap_or_else(|| Box::new(BasicMaterial::new(Vec4::ONE)));
-            materials.store(world, handle.1.clone(), material);
-
-            // save animations
-            animations.store(world, handle.2.clone(), AnimationSet(anims));
-
-            // save mesh
-            vault.mesh.insert(hash, (handle, CowData::new(mesh)));
+            match loader::gltf::load(&content.1, &world, &graphics, &meshes, &PathBuf::new(), &PathBuf::new(), None, hash) {
+                Ok((mesh, anims)) => finish(hash, handle, mesh, anims),
+                Err(err) => log::error!("Failed to load gltf skeletal mesh: {err:#}"),
+            }
         }
-        
+
         vault.inprogress_gltf.remove(&hash);
     }
 
-
     #[cfg(not(target_arch = "wasm32"))]
     for hash in inprogress_fbx_hashes.into_iter() {
-        {
-            // pull content
-            let Some(content) = vault.inprogress_fbx.get(&hash)
-                else { continue };
+        if let Some(content) = vault.inprogress_fbx.get(&hash) {
             let handle = content.0.clone();
-
-            // load fbx
-            let fbx = &content.1;
-            let (mesh, anims) = loader::fbx::load(&fbx, &world, &graphics, &meshes, None, None, hash)?;
-
-            // save material
-            let material: Box<dyn Material> = mesh.material().clone()
-                .map::<Box<dyn Material>, _>(|a| Box::new(a))
-                .unwrap_or_else(|| Box::new(BasicMaterial::new(Vec4::ONE)));
-            materials.store(world, handle.1.clone(), material);
-
-            // save animations
-            animations.store(world, handle.2.clone(), AnimationSet(anims));
-
-            // save mesh
-            vault.mesh.insert(hash, (handle, CowData::new(mesh)));
+            match loader::fbx::load(&content.1, &world, &graphics, &meshes, None, None, hash) {
+                Ok((mesh, anims)) => finish(hash, handle, mesh, anims),
+                Err(err) => log::error!("Failed to load fbx skeletal mesh: {err:#}"),
+            }
         }
-        
+
         vault.inprogress_fbx.remove(&hash);
     }
 }

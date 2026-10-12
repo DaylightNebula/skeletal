@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use anarchy::macros::{AsAny, Getters, GettersMut};
+use anarchy::AsAny;
+use getset::{Getters, MutGetters};
 use gearbox::{Asset, Handle, MeshAsset, SimpleTexturedMaterial, glam::Mat4};
 use magician_vgpu::{BindableObject, MutableBuffer};
 use skeletal_shaders::AnimationInfo;
@@ -16,7 +17,8 @@ pub type SkeletalMeshVertex = skeletal_shaders::VertexInput;
 /// attached to bones (`meshes`, keyed by the source format's mesh index), the
 /// model's material, and a lookup from authored node name to node id
 /// (`node_id_map`, used to resolve `Animator` channels onto this skeleton's ids).
-#[derive(Getters, GettersMut, AsAny)]
+#[derive(Getters, MutGetters, AsAny)]
+#[getset(get = "pub", get_mut = "pub")]
 pub struct SkeletalMesh {
     pub(crate) bones: Vec<ModelBone>,
     pub(crate) skin: Option<Vec<(u16, Mat4)>>,

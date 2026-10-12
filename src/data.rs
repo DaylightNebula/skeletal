@@ -44,20 +44,20 @@ pub struct Animation {
 
 impl Animation {
     pub fn from_preprocessed_animation(
-        animation: &PreProcessAnimation, 
+        animation: &PreProcessAnimation,
         node_id_map: &AHashMap<String, usize>,
         warn_not_found: bool
     ) -> Self {
         let channels = animation.channels
             .iter()
             .filter_map(|(id, channel)| {
-                let Some(id) = node_id_map.get(id) else { 
+                let Some(id) = node_id_map.get(id) else {
                     if warn_not_found {
                         println!("No animated node with id {} found for animations", id);
                     }
-                    return None 
+                    return None
                 };
-                
+
                 Some((
                     *id,
                     Channel {

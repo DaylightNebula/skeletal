@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use anarchy::{macros::Resource};
+use anarchy::Resource;
 use derive_more::{Deref, DerefMut};
 use gearbox::{Asset, AssetVault, Handle, LazyAssetVault};
 use mutual::{CowData, DashMap, RefCowData};
@@ -10,6 +10,12 @@ use crate::PreProcessAnimation;
 
 #[derive(Resource, Deref, DerefMut, Default)]
 pub struct AnimationVault(Arc<AnimationVaultInner>);
+
+impl std::fmt::Debug for AnimationVault {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AnimationVault").field("animations", &self.storage.len()).finish()
+    }
+}
 
 #[derive(Default)]
 pub struct AnimationVaultInner {
@@ -45,7 +51,7 @@ impl LazyAssetVault for AnimationVault {
     type AllocTy = u64;
     type Store = AnimationSet;
 
-    fn allocate(&self, alloc: Self::AllocTy) -> anarchy::anyhow::Result<Self::Lookup> {
+    fn allocate(&self, alloc: Self::AllocTy) -> anyhow::Result<Self::Lookup> {
         let handle = Handle::new((alloc, Arc::clone(&self.0)));
         self.storage.insert(alloc, CowData::null());
         return Ok(handle);

@@ -1,4 +1,4 @@
-use cell::{App, Plugin};
+use gearbox::{App, Plugin};
 
 pub mod anim;
 pub mod data;
@@ -14,7 +14,7 @@ pub use mesh::*;
 pub use model::*;
 pub use vault::*;
 
-/// Adds skinned-mesh loading (glTF/FBX) and rendering to a `cell::App`.
+/// Adds skinned-mesh loading (glTF/FBX) and rendering to a `gearbox::App`.
 /// Registers the `SkeletalMeshVault` resource; see `vault::SkeletalMeshVaultPlugin`.
 pub struct SkeletalMeshPlugin;
 impl Plugin for SkeletalMeshPlugin {

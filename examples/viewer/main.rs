@@ -1,22 +1,19 @@
 use std::path::PathBuf;
 
-use anarchy::macros::{Resource, system};
-use anarchy::anyhow::{self, bail};
-use anarchy::{EntityBuilder, Query, Res, ResMut, WorldDatabase};
-use cell::{EguiPlugin, Graphics};
-use cell::{App, EguiCtx, egui::egui};
-use gearbox::{AssetContent, AssetVault, BindlessArrayTextureVault, LoadableAssetVault, MaterialRef, MeshAssetVault, MeshRef, glam::*};
+use anarchy::{Query, Res, ResMut, Resource, World};
+use gearbox::{App, EguiCtx, EguiPlugin, egui::egui, spawn};
+use gearbox::{AssetContent, AssetVault, LoadableAssetVault, MaterialRef, MeshRef, glam::*};
 use gearbox::{Camera, GearboxRenderPlugin, Transform};
 use skeletal::anim::Animator;
 use skeletal::{SkeletalMeshHandle, SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
 
-#[derive(Resource)]
+#[derive(Debug, Resource)]
 pub struct ViewerData {
     pub anim_mesh_handle_storage: Vec<SkeletalMeshHandle>,
     pub loop_animations: bool
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> gearbox::anyhow::Result<()> {
     App::new()
         .add_plugin(GearboxRenderPlugin)
         .add_plugin(SkeletalMeshPlugin)
@@ -27,58 +24,59 @@ fn main() -> anyhow::Result<()> {
         .run()
 }
 
-#[system]
 fn setup(
-    graphics: Res<Graphics>,
-    meshes: Res<SkeletalMeshVault>,
-    textures: Res<BindlessArrayTextureVault>
+    world: World,
+    meshes: Res<SkeletalMeshVault>
 ) {
-    world.insert(
-        EntityBuilder::default()
-            .add(Transform::new(Vec3::new(0.0, 10.0, 30.0), Quat::from_rotation_x(-0.5), Vec3::ONE))
-            .add(Camera::default())
-            .build()
-    );
+    spawn(&world, vec![
+        Box::new(Transform::new(Vec3::new(0.0, 10.0, 30.0), Quat::from_rotation_x(-0.5), Vec3::ONE)),
+        Box::new(Camera::default()),
+    ]);
     
-    let Some(path) = get_path() else { bail!("No path provided") };
-    let (model, material, anims) = meshes.load(world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)?;
+    let Some(path) = get_path() else { return log::error!("No path provided") };
+    let (model, material, anims) = match meshes.load(&world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF) {
+        Ok(loaded) => loaded,
+        Err(err) => return log::error!("Failed to load model: {err:#}"),
+    };
     let mut animator = Animator::empty();
     animator.load_animations(anims);
 
-    world.insert(
-        EntityBuilder::default()
-            .add(Transform::new(Vec3::new(0.0, -1.0, 0.0), Quat::IDENTITY, Vec3::ONE * 3.0))
-            .add(MaterialRef::new(material))
-            .add(animator)
-            .add(MeshRef::new(model))
-            .build()
-    );
+    spawn(&world, vec![
+        Box::new(Transform::new(Vec3::new(0.0, -1.0, 0.0), Quat::IDENTITY, Vec3::ONE * 3.0)),
+        Box::new(MaterialRef::new(material)),
+        Box::new(animator),
+        Box::new(MeshRef::new(model)),
+    ]);
 }
 
-#[system]
 fn update(
-    graphics: Res<Graphics>,
+    world: World,
     egui: Res<EguiCtx>,
-    meshes: Res<MeshAssetVault>,
     skvault: Res<SkeletalMeshVault>,
-    query: Query<(&mut Animator, &MeshRef)>,
-    data: ResMut<ViewerData>
+    mut query: Query<(&'static mut Animator, &'static MeshRef)>,
+    mut data: ResMut<ViewerData>
 ) {
+    // collected so the windows below can each walk the models
+    let mut models = Vec::new();
+    while let Some((_id, model)) = query.next().unwrap() {
+        models.push(model);
+    }
+
     egui::Window::new("Animations").show(&egui.context, |ui| {
         if ui.button("Add animations...").clicked() {
             let Some(path) = rfd::FileDialog::new()
                 .set_title("Select a GLTF/GLB file")
                 .pick_file() else { return };
 
-            let Ok((mesh, _, anims)) = skvault.load(world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)
+            let Ok((mesh, _, anims)) = skvault.load(&world, AssetContent::LocalPath(path), SkeletalMeshLoadType::GLTF)
                 else { return };
             data.anim_mesh_handle_storage.push(mesh);
-            for (mut animator, _) in query.as_iter() {
+            for (animator, _) in models.iter_mut() {
                 animator.load_animations(anims.clone());
             }
         }
 
-        for (mut animator, _) in query.as_iter() {
+        for (animator, _) in models.iter_mut() {
             let animations = animator.animations()
                 .iter()
                 .map(|a| a.0.clone())
@@ -102,7 +100,7 @@ fn update(
     });
 
     egui::Window::new("Mesh").show(&egui.context, |ui| {
-        for (_, handle) in query.as_iter() {
+        for (_, handle) in models.iter() {
             let Some(handle) = handle.0.as_any().downcast_ref::<SkeletalMeshHandle>() else { continue };
             let Some(mesh) = skvault.get(handle) else { continue };
 

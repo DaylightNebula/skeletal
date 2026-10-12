@@ -1,7 +1,9 @@
-use anarchy::{ComponentMeta, Entity, World, anyhow::{self, Context, bail}, extract_comps_distributed, macros::{AsAny, Getters}};
+use anarchy::{AsAny, EntityID, World, WorldImpl};
+use anyhow::Context;
+use getset::Getters;
 use gearbox::{AssetVault, Handle, Mesh, MeshAssetVault, Transform, glam::Mat4};
 use magician_vgpu::{BindGroupProvider, BindableObject, Buffer, DrawSettings, ImmutableBuffer, MutableBuffer, Pipeline, PipelineBuilder, ShaderSource, ShaderType, SinglePass, VirtualGpu, WritableBuffer};
-use mutual::{CastableSharedData, CowData, DashSet, MutCastGuard, RefCastGuard};
+use mutual::{CowData, DashSet};
 use skeletal_shaders::{AnimationInfo, AnimationInfoInput};
 use wgpu::ShaderStages;
 
@@ -32,11 +34,11 @@ impl Mesh for SkeletalRenderableMesh {
         _vgpu: &VirtualGpu,
         pass: &mut SinglePass,
         _world: &World,
-        _entity: &Entity
+        _entity: EntityID
     ) -> anyhow::Result<()> {
         pass.draw(
-            &self.vertices, 
-            &self.indices, 
+            &self.vertices,
+            &self.indices,
             DrawSettings::default()
         );
         Ok(())
@@ -51,6 +53,7 @@ impl Mesh for SkeletalRenderableMesh {
 /// a handle keeps the same underlying mesh but starts with fresh (null) GPU
 /// state, since that state is per-entity, not shared.
 #[derive(AsAny, Getters)]
+#[getset(get = "pub")]
 pub struct SkeletalMeshHandle {
     pub(crate) handle: Handle<SkeletalMesh>,
     pub(crate) instance_buffer: CowData<MutableBuffer<[Mat4]>>,
@@ -66,6 +69,15 @@ impl SkeletalMeshHandle {
             animation_buffers: CowData::null(),
             invisible_bones: DashSet::new()
         }
+    }
+}
+
+impl std::fmt::Debug for SkeletalMeshHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SkeletalMeshHandle")
+            .field("hash", &self.handle.inner().0)
+            .field("invisible_bones", &self.invisible_bones.len())
+            .finish_non_exhaustive()
     }
 }
 
@@ -89,7 +101,7 @@ impl Mesh for SkeletalMeshHandle {
         Ok(
             Pipeline::builder("Skeletal Vertex Shader")
                 .source(
-                    ShaderType::Vertex, 
+                    ShaderType::Vertex,
                     ShaderSource {
                         source: skeletal_shaders::SHADER_skeletal_vertex_main.into(),
                         main_function: "skeletal_vertex_main".into()
@@ -107,36 +119,28 @@ impl Mesh for SkeletalMeshHandle {
         vgpu: &VirtualGpu,
         pass: &mut SinglePass,
         world: &World,
-        entity: &Entity
+        entity: EntityID
     ) -> anyhow::Result<()> {
-        let skvault = world
-            .get_resource_ref::<SkeletalMeshVault>()
+        let skvault = world.resource::<SkeletalMeshVault>()
             .context("Could not find skeletal mesh vault")?;
 
         let mesh = skvault.get(self)
             .context("Failed to get mesh")?;
 
-        let Some(mesh_vault) = world.get_resource_ref::<MeshAssetVault>()
-            else { bail!("Missing mesh vault") };
-        let Some(anim_vault) = world.get_resource_ref::<AnimationVault>()
-            else { bail!("Missing mesh vault") };
+        let mesh_vault = world.resource::<MeshAssetVault>()
+            .context("Missing mesh vault")?;
+        let anim_vault = world.resource::<AnimationVault>()
+            .context("Missing animation vault")?;
 
-        // extract transform and mesh components
-        let (mut comps, _ctx) = extract_comps_distributed(
-            entity, 
-            &[Transform::bit_mask(), Animator::bit_mask()], 
-            None
-        );
-        let transform: RefCastGuard<_, Transform> = comps.next().flatten()
-            .expect("SkeletalMesh requires Transform companion component").lock_cast_ref();
-        let mut animator: MutCastGuard<_, Animator> = comps.next().flatten()
-            .expect("SkeletalMesh requires Animator companion component").lock_cast_mut();
+        // extract transform and animator components
+        let (transform, mut animator) = world.get::<(&Transform, &mut Animator)>(entity)?
+            .context("SkeletalMesh requires Transform and Animator companion components")?;
 
         // create instance matrix to draw
         let instances = [
             Mat4::from_scale_rotation_translation(
-                transform.scale, 
-                transform.rotation, 
+                transform.scale,
+                transform.rotation,
                 transform.translation
             )
         ];
@@ -144,8 +148,8 @@ impl Mesh for SkeletalMeshHandle {
         // create or update instance buffer
         if self.instance_buffer.is_null() {
             self.instance_buffer.set(MutableBuffer::new(
-                vgpu, 
-                &instances, 
+                vgpu,
+                &instances,
                 wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST
             ));
         } else {
@@ -195,7 +199,7 @@ impl Mesh for SkeletalMeshHandle {
 
             if self.animation_buffers.is_null() {
                 let buffer = MutableBuffer::new(
-                    vgpu, &info, 
+                    vgpu, &info,
                     wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
                 );
                 let bindable = BindableObject
@@ -233,7 +237,7 @@ fn recr_bone(
     vault: &MeshAssetVault,
     pass: &mut SinglePass,
     world: &World,
-    entity: &Entity,
+    entity: EntityID,
     handle: &SkeletalMeshHandle,
     mesh: &SkeletalMesh,
     bone: &ModelBone,
@@ -248,7 +252,7 @@ fn recr_bone(
             }
         }
     }
-    
+
     // draw children bones
     for child in &bone.children {
         recr_bone(vgpu, vault, pass, world, entity, handle, mesh, child)?;
@@ -256,4 +260,3 @@ fn recr_bone(
 
     Ok(())
 }
-

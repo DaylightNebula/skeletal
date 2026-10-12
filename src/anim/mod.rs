@@ -1,7 +1,8 @@
 use std::{collections::LinkedList, f32::consts::PI};
 
 use ahash::AHashMap;
-use anarchy::macros::{Component, Getters};
+use anarchy::Component;
+use getset::Getters;
 use chrono::{DateTime, Utc};
 use gearbox::{AssetVault, Handle, Transform};
 use magician_vgpu::glam::{Mat4, Quat, Vec3};
@@ -15,13 +16,26 @@ pub use vault::*;
 /// A basic animator that allows for low level control of the current animation
 /// state of a `SkeletalMesh` or anything else that uses this `Animator`.
 #[derive(Getters, Component)]
+#[getset(get = "pub")]
+#[component(no_serialize)]
 pub struct Animator {
     animations: AHashMap<String, Animation>,
     load_queue: LinkedList<Handle<AnimationSet>>,
     state: Option<AnimatorState>
 }
 
+impl std::fmt::Debug for Animator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Animator")
+            .field("animations", &self.animations.keys().collect::<Vec<_>>())
+            .field("queued", &self.load_queue.len())
+            .field("state", &self.state)
+            .finish()
+    }
+}
+
 /// The general animation state of the `Animator`.
+#[derive(Debug)]
 pub struct AnimatorState {
     animation: String,
     start_time: DateTime<Utc>,

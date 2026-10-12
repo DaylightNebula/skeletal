@@ -1,15 +1,13 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow};
-use anarchy::macros::system;
-use cell::App;
-use gearbox::{AssetContent, TextureType, BindlessArrayTextureVault, TextureHandle, Camera, GearboxRenderPlugin, LoadableAssetVault, MaterialRef, MeshRef, SimpleTexturedMaterial, Transform};
+use anarchy::{Query, Res, World};
+use gearbox::{App, AssetContent, spawn, TextureType, BindlessArrayTextureVault, TextureHandle, Camera, GearboxRenderPlugin, LoadableAssetVault, MaterialRef, MeshRef, SimpleTexturedMaterial, Transform};
 use magician_vgpu::glam::*;
 use skeletal::anim::Animator;
 use skeletal::{SkeletalMeshLoadType, SkeletalMeshPlugin, SkeletalMeshVault};
 
 #[cfg(not(target_arch = "wasm32"))]
-fn main() -> anyhow::Result<()> {
+fn main() -> gearbox::anyhow::Result<()> {
     App::new()
         .add_plugin(GearboxRenderPlugin)
         .add_plugin(SkeletalMeshPlugin)
@@ -18,43 +16,42 @@ fn main() -> anyhow::Result<()> {
         .run()
 }
 
-#[system]
 fn startup_triangle(
+    world: World,
     meshes: Res<SkeletalMeshVault>,
     textures: Res<BindlessArrayTextureVault>
 ) {
-    world.insert(
-        EntityBuilder::default()
-            .add(Transform::new(Vec3::new(0.0, 10.0, 30.0), Quat::from_rotation_x(-0.5), Vec3::ONE))
-            .add(Camera::default())
-            .build()
-    );
+    spawn(&world, vec![
+        Box::new(Transform::new(Vec3::new(0.0, 10.0, 30.0), Quat::from_rotation_x(-0.5), Vec3::ONE)),
+        Box::new(Camera::default()),
+    ]);
 
     for z in -1 .. 2 {
-        let (model, _, anims) = meshes.load(world, AssetContent::LocalPath("./examples/fbx/SK_Character_Alien_Male_01.fbx".into()), SkeletalMeshLoadType::FBX)?;
-        let texture = textures.load(world, AssetContent::LocalPath("./examples/fbx/PolygonSciFiCity_Texture_01_A.png".into()), TextureType::PNG)?;
+        let loaded = meshes.load(&world, AssetContent::LocalPath("./examples/fbx/SK_Character_Alien_Male_01.fbx".into()), SkeletalMeshLoadType::FBX)
+            .and_then(|mesh| Ok((mesh, textures.load(&world, AssetContent::LocalPath("./examples/fbx/PolygonSciFiCity_Texture_01_A.png".into()), TextureType::PNG)?)));
+        let ((model, _, anims), texture) = match loaded {
+            Ok(loaded) => loaded,
+            Err(err) => return log::error!("Failed to load the alien model: {err:#}"),
+        };
         let texture = TextureHandle::Bindless(texture);
         let material = MaterialRef::new(SimpleTexturedMaterial::new(texture));
         let mut animator = Animator::empty();
         animator.load_animations(anims);
 
-        world.insert(
-            EntityBuilder::default()
-                .add(Transform::new(Vec3::new(z as f32 * 5.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE * 0.025))
-                .add(material)
-                .add(animator)
-                .add(MeshRef::new(model))
-                .build()
-        );
+        spawn(&world, vec![
+            Box::new(Transform::new(Vec3::new(z as f32 * 5.0, 0.0, 0.0), Quat::IDENTITY, Vec3::ONE * 0.025)),
+            Box::new(material),
+            Box::new(animator),
+            Box::new(MeshRef::new(model)),
+        ]);
     }
 }
 
-#[system]
 fn update_triangle(
-    transforms: Query<(&mut Transform, &MeshRef)>
+    mut transforms: Query<(&'static mut Transform, &'static MeshRef)>
 ) {
-    transforms.as_iter().for_each(|(mut transform, _)| {
+    while let Some((_id, (mut transform, _))) = transforms.next().unwrap() {
         let rotation = Quat::from_euler(EulerRot::XYZ, 0.0, 0.005 / 3.0, 0.0) * transform.rotation();
         transform.set_rotation(rotation);
-    });
+    }
 }
